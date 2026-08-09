@@ -1,0 +1,2 @@
+// Applied to ScreenTidy Debug + Release. Optional secrets file is gitignored.
+#include? "Secrets.xcconfig"

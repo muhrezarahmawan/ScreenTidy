@@ -1,0 +1,65 @@
+# Xcode
+build/
+DerivedData/
+.derivedData/
+*.xcuserdata
+*.xcworkspace/xcuserdata/
+*.xcodeproj/project.xcworkspace/xcuserdata/
+*.xcodeproj/xcuserdata/
+*.moved-aside
+*.hmap
+*.ipa
+*.dSYM.zip
+*.dSYM
+timeline.xctimeline
+playground.xcworkspace
+
+# Swift Package Manager
+.build/
+.swiftpm/
+Packages/
+Package.resolved
+
+# CocoaPods (not used; ignore if introduced)
+Pods/
+
+# OS
+.DS_Store
+**/.DS_Store
+*.swp
+*~
+
+# IDE / local scratch
+.idea/
+*.iml
+.cursor-tmp/
+.cursor/
+
+# Node / gateway build artifacts
+node_modules/
+**/node_modules/
+dist/
+**/dist/
+coverage/
+.tsx/
+
+# Secrets / local env (keep example templates only)
+.env
+.env.*
+!**/.env.example
+!.env.example
+*.pem
+AuthKey_*.p8
+*.p12
+*.mobileprovision
+ScreenTidy/Config/Secrets.xcconfig
+**/Secrets.xcconfig
+!**/*.xcconfig.example
+!**/Secrets.xcconfig.example
+
+# Misc
+*.log
+fastlane/report.xml
+fastlane/Preview.html
+fastlane/screenshots/**/*.png
+fastlane/test_output

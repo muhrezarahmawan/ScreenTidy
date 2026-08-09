@@ -1,0 +1,21 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0">
+<dict>
+	<!-- Hosted HTTPS gateway (from Secrets.xcconfig). Optional DEBUG LAN override still available in Inspector. -->
+	<key>ScreenTidyGatewayBaseURL</key>
+	<string>$(SCREENTIDY_GATEWAY_BASE_URL)</string>
+	<!-- MVP/TestFlight gateway bearer token — NOT the OpenAI API key. -->
+	<key>ScreenTidyGatewayToken</key>
+	<string>$(SCREENTIDY_GATEWAY_TOKEN)</string>
+	<!-- Optional: cleartext LAN gateway for local Mac development only. Hosted path uses HTTPS (no exception needed). -->
+	<key>NSAppTransportSecurity</key>
+	<dict>
+		<key>NSAllowsLocalNetworking</key>
+		<true/>
+	</dict>
+	<!-- Only needed if testing a local Mac gateway over LAN; not required for hosted HTTPS. -->
+	<key>NSLocalNetworkUsageDescription</key>
+	<string>ScreenTidy may use the local network in DEBUG to reach an optional local development gateway on your Mac. The normal hosted gateway uses HTTPS and does not require Local Network access.</string>
+</dict>
+</plist>
