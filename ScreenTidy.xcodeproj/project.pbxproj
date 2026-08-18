@@ -7,6 +7,21 @@
 	objects = {
 
 /* Begin PBXBuildFile section */
+		E5VISDIAG000000000001 /* VisualAnalysisDebugRuntime.swift in Sources */ = {isa = PBXBuildFile; fileRef = E5VISDIAG000000000002 /* VisualAnalysisDebugRuntime.swift */; };
+		E5VISPIPE00000000000001 /* VisualAnalysisPipeline.swift in Sources */ = {isa = PBXBuildFile; fileRef = E5VISPIPE00000000000002 /* VisualAnalysisPipeline.swift */; };
+		E5VISFILT00000000000001 /* VisualLabelFilter.swift in Sources */ = {isa = PBXBuildFile; fileRef = E5VISFILT00000000000002 /* VisualLabelFilter.swift */; };
+		E5VISFACET000000000001 /* ScreenshotFacetDeriver.swift in Sources */ = {isa = PBXBuildFile; fileRef = E5VISFACET000000000002 /* ScreenshotFacetDeriver.swift */; };
+		E5VISSRC00000000000001 /* ScreenshotSourceEvidence.swift in Sources */ = {isa = PBXBuildFile; fileRef = E5VISSRC00000000000002 /* ScreenshotSourceEvidence.swift */; };
+		E583ATEST000000000001 /* MultimodalContentUnderstandingTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = E583ATEST000000000002 /* MultimodalContentUnderstandingTests.swift */; };
+		E583ALAB0000000000001 /* MultimodalContentUnderstandingLabClient.swift in Sources */ = {isa = PBXBuildFile; fileRef = E583ALAB0000000000002 /* MultimodalContentUnderstandingLabClient.swift */; };
+		E583ACONT000000000001 /* MultimodalContentUnderstanding.swift in Sources */ = {isa = PBXBuildFile; fileRef = E583ACONT000000000002 /* MultimodalContentUnderstanding.swift */; };
+		E5VISSVC00000000000001 /* VisionVisualAnalysisService.swift in Sources */ = {isa = PBXBuildFile; fileRef = E5VISSVC00000000000002 /* VisionVisualAnalysisService.swift */; };
+		E5VISQUE00000000000001 /* VisualAnalysisProcessingQueue.swift in Sources */ = {isa = PBXBuildFile; fileRef = E5VISQUE00000000000002 /* VisualAnalysisProcessingQueue.swift */; };
+		E5MSCLUS00000000000001 /* MultiSignalClusterer.swift in Sources */ = {isa = PBXBuildFile; fileRef = E5MSCLUS00000000000002 /* MultiSignalClusterer.swift */; };
+		E5VISDBG00000000000001 /* VisualIntelligenceDebugInspectorView.swift in Sources */ = {isa = PBXBuildFile; fileRef = E5VISDBG00000000000002 /* VisualIntelligenceDebugInspectorView.swift */; };
+		E5VISTEST0000000000001 /* VisualIntelligenceTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = E5VISTEST0000000000002 /* VisualIntelligenceTests.swift */; };
+		E5VISQTEST0000000000001 /* VisualAnalysisQueueTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = E5VISQTEST0000000000002 /* VisualAnalysisQueueTests.swift */; };
+		E5THUMBTEST000000000001 /* PhotoKitThumbnailDeliveryTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = E5THUMBTEST000000000002 /* PhotoKitThumbnailDeliveryTests.swift */; };
 		E587446B3AB81CA5807AD057 /* OrganizationBatchPlanner.swift in Sources */ = {isa = PBXBuildFile; fileRef = E58EC98672753155FA698A1A /* OrganizationBatchPlanner.swift */; };
 		E58B4599F66E7FB532AA104F /* CompositeUnderstandingProvider.swift in Sources */ = {isa = PBXBuildFile; fileRef = E5854515A5A7C6A5C47B0FAB /* CompositeUnderstandingProvider.swift */; };
 		E58NETDIAG00000000000001 /* OrganizationNetworkDiagnostics.swift in Sources */ = {isa = PBXBuildFile; fileRef = E58NETDIAG00000000000002 /* OrganizationNetworkDiagnostics.swift */; };
@@ -70,6 +85,7 @@
 		5EEEA1B5A59554A98625DCB3 /* PhotoKitScreenshotDiscovery.swift in Sources */ = {isa = PBXBuildFile; fileRef = 97859D2309805D218A6E342D /* PhotoKitScreenshotDiscovery.swift */; };
 		83CFDEEDD6905E59AC7E22B9 /* PhotoKitScreenshotSyncService.swift in Sources */ = {isa = PBXBuildFile; fileRef = 1017C69D3B7553ED962147B4 /* PhotoKitScreenshotSyncService.swift */; };
 		3B82BAC2CC3E500FB7F2D3A5 /* PhotoKitThumbnailProvider.swift in Sources */ = {isa = PBXBuildFile; fileRef = 0BF04C7FB04454D980CF011E /* PhotoKitThumbnailProvider.swift */; };
+		E5PROBEFILE000000000001 /* ThumbnailLoadProbe.swift in Sources */ = {isa = PBXBuildFile; fileRef = E5PROBEFILE000000000002 /* ThumbnailLoadProbe.swift */; };
 		E5A10001OCRPIPE000000001 /* OCRPipeline.swift in Sources */ = {isa = PBXBuildFile; fileRef = E5A10001OCRPIPE000000002 /* OCRPipeline.swift */; };
 		E5A10001SRCHFTS000000001 /* SearchFTSQuery.swift in Sources */ = {isa = PBXBuildFile; fileRef = E5A10001SRCHFTS000000002 /* SearchFTSQuery.swift */; };
 		E5A10001SRCHSUG000000001 /* LocalSearchSuggestionsProvider.swift in Sources */ = {isa = PBXBuildFile; fileRef = E5A10001SRCHSUG000000002 /* LocalSearchSuggestionsProvider.swift */; };
@@ -97,6 +113,21 @@
 /* End PBXBuildFile section */
 
 /* Begin PBXFileReference section */
+		E5VISDIAG000000000002 /* VisualAnalysisDebugRuntime.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = "Data/VisualAnalysis/VisualAnalysisDebugRuntime.swift"; sourceTree = "<group>"; };
+		E5VISPIPE00000000000002 /* VisualAnalysisPipeline.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = "Data/VisualAnalysis/VisualAnalysisPipeline.swift"; sourceTree = "<group>"; };
+		E5VISFILT00000000000002 /* VisualLabelFilter.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = "Data/VisualAnalysis/VisualLabelFilter.swift"; sourceTree = "<group>"; };
+		E5VISFACET000000000002 /* ScreenshotFacetDeriver.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = "Data/VisualAnalysis/ScreenshotFacetDeriver.swift"; sourceTree = "<group>"; };
+		E5VISSRC00000000000002 /* ScreenshotSourceEvidence.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = "Data/VisualAnalysis/ScreenshotSourceEvidence.swift"; sourceTree = "<group>"; };
+		E583ATEST000000000002 /* MultimodalContentUnderstandingTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = MultimodalContentUnderstandingTests.swift; sourceTree = "<group>"; };
+		E583ALAB0000000000002 /* MultimodalContentUnderstandingLabClient.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = "Data/VisualAnalysis/MultimodalContentUnderstandingLabClient.swift"; sourceTree = "<group>"; };
+		E583ACONT000000000002 /* MultimodalContentUnderstanding.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = "Data/VisualAnalysis/MultimodalContentUnderstanding.swift"; sourceTree = "<group>"; };
+		E5VISSVC00000000000002 /* VisionVisualAnalysisService.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = "Data/VisualAnalysis/VisionVisualAnalysisService.swift"; sourceTree = "<group>"; };
+		E5VISQUE00000000000002 /* VisualAnalysisProcessingQueue.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = "Data/VisualAnalysis/VisualAnalysisProcessingQueue.swift"; sourceTree = "<group>"; };
+		E5MSCLUS00000000000002 /* MultiSignalClusterer.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = "Data/Organization/MultiSignalClusterer.swift"; sourceTree = "<group>"; };
+		E5VISDBG00000000000002 /* VisualIntelligenceDebugInspectorView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = "Features/Settings/VisualIntelligenceDebugInspectorView.swift"; sourceTree = "<group>"; };
+		E5VISTEST0000000000002 /* VisualIntelligenceTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = "VisualIntelligenceTests.swift"; sourceTree = "<group>"; };
+		E5VISQTEST0000000000002 /* VisualAnalysisQueueTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = "VisualAnalysisQueueTests.swift"; sourceTree = "<group>"; };
+		E5THUMBTEST000000000002 /* PhotoKitThumbnailDeliveryTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = "PhotoKitThumbnailDeliveryTests.swift"; sourceTree = "<group>"; };
 		E58EC98672753155FA698A1A /* OrganizationBatchPlanner.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = "Data/Organization/OrganizationBatchPlanner.swift"; sourceTree = "<group>"; };
 		E5854515A5A7C6A5C47B0FAB /* CompositeUnderstandingProvider.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = "Data/Organization/CompositeUnderstandingProvider.swift"; sourceTree = "<group>"; };
 		E58NETDIAG00000000000002 /* OrganizationNetworkDiagnostics.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = "Data/Organization/OrganizationNetworkDiagnostics.swift"; sourceTree = "<group>"; };
@@ -161,6 +192,7 @@
 		97859D2309805D218A6E342D /* PhotoKitScreenshotDiscovery.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = "Data/PhotoKit/PhotoKitScreenshotDiscovery.swift"; sourceTree = "<group>"; };
 		1017C69D3B7553ED962147B4 /* PhotoKitScreenshotSyncService.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = "Data/PhotoKit/PhotoKitScreenshotSyncService.swift"; sourceTree = "<group>"; };
 		0BF04C7FB04454D980CF011E /* PhotoKitThumbnailProvider.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = "Data/PhotoKit/PhotoKitThumbnailProvider.swift"; sourceTree = "<group>"; };
+		E5PROBEFILE000000000002 /* ThumbnailLoadProbe.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = "Data/PhotoKit/ThumbnailLoadProbe.swift"; sourceTree = "<group>"; };
 		E5A10001OCRPIPE000000002 /* OCRPipeline.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = "Data/OCR/OCRPipeline.swift"; sourceTree = "<group>"; };
 		E5A10001SRCHFTS000000002 /* SearchFTSQuery.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = "Data/Search/SearchFTSQuery.swift"; sourceTree = "<group>"; };
 		E5A10001SRCHSUG000000002 /* LocalSearchSuggestionsProvider.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = "Data/Search/LocalSearchSuggestionsProvider.swift"; sourceTree = "<group>"; };
@@ -279,10 +311,22 @@
 				97859D2309805D218A6E342D /* PhotoKitScreenshotDiscovery.swift */,
 				1017C69D3B7553ED962147B4 /* PhotoKitScreenshotSyncService.swift */,
 				0BF04C7FB04454D980CF011E /* PhotoKitThumbnailProvider.swift */,
+				E5PROBEFILE000000000002 /* ThumbnailLoadProbe.swift */,
 				E5A10001OCRNOOP00000002 /* NoOpOCRScheduler.swift */,
 				E5A10001OCRQUE000000002 /* OCRProcessingQueue.swift */,
 				E5A10001OCRIMG000000002 /* PhotoKitOCRImageLoader.swift */,
 				E5A10001VISION000000002 /* VisionOCRService.swift */,
+				E5VISDIAG000000000002 /* VisualAnalysisDebugRuntime.swift */,
+				E5VISPIPE00000000000002 /* VisualAnalysisPipeline.swift */,
+				E5VISFILT00000000000002 /* VisualLabelFilter.swift */,
+				E5VISFACET000000000002 /* ScreenshotFacetDeriver.swift */,
+				E5VISSRC00000000000002 /* ScreenshotSourceEvidence.swift */,
+				E583ACONT000000000002 /* MultimodalContentUnderstanding.swift */,
+				E583ALAB0000000000002 /* MultimodalContentUnderstandingLabClient.swift */,
+				E5VISSVC00000000000002 /* VisionVisualAnalysisService.swift */,
+				E5VISQUE00000000000002 /* VisualAnalysisProcessingQueue.swift */,
+				E5MSCLUS00000000000002 /* MultiSignalClusterer.swift */,
+				E5VISDBG00000000000002 /* VisualIntelligenceDebugInspectorView.swift */,
 				E5A10001OCRPIPE000000002 /* OCRPipeline.swift */,
 				E5A10001SRCHFTS000000002 /* SearchFTSQuery.swift */,
 				E5A10001SRCHSUG000000002 /* LocalSearchSuggestionsProvider.swift */,
@@ -323,6 +367,10 @@
 				E58000003F3AAAAAAAAAAAAAAA /* CollectionResolverTests.swift */,
 				E58000003GWTESTAAAAAAAAAA /* UnderstandingGatewayConfigurationTests.swift */,
 				E58NETTEST00000000000002 /* OrganizationNetworkDiagnosticsTests.swift */,
+				E5VISTEST0000000000002 /* VisualIntelligenceTests.swift */,
+				E583ATEST000000000002 /* MultimodalContentUnderstandingTests.swift */,
+				E5VISQTEST0000000000002 /* VisualAnalysisQueueTests.swift */,
+				E5THUMBTEST000000000002 /* PhotoKitThumbnailDeliveryTests.swift */,
 			);
 			path = ScreenTidyTests;
 			sourceTree = "<group>";
@@ -496,11 +544,23 @@
 				5EEEA1B5A59554A98625DCB3 /* PhotoKitScreenshotDiscovery.swift in Sources */,
 				83CFDEEDD6905E59AC7E22B9 /* PhotoKitScreenshotSyncService.swift in Sources */,
 				3B82BAC2CC3E500FB7F2D3A5 /* PhotoKitThumbnailProvider.swift in Sources */,
+				E5PROBEFILE000000000001 /* ThumbnailLoadProbe.swift in Sources */,
 				E5A10001OCRDBG000000001 /* OCRDebugInspectorView.swift in Sources */,
 				E5A10001OCRNOOP00000001 /* NoOpOCRScheduler.swift in Sources */,
 				E5A10001OCRQUE000000001 /* OCRProcessingQueue.swift in Sources */,
 				E5A10001OCRIMG000000001 /* PhotoKitOCRImageLoader.swift in Sources */,
 				E5A10001VISION000000001 /* VisionOCRService.swift in Sources */,
+				E5VISDIAG000000000001 /* VisualAnalysisDebugRuntime.swift in Sources */,
+				E5VISPIPE00000000000001 /* VisualAnalysisPipeline.swift in Sources */,
+				E5VISFILT00000000000001 /* VisualLabelFilter.swift in Sources */,
+				E5VISFACET000000000001 /* ScreenshotFacetDeriver.swift in Sources */,
+				E5VISSRC00000000000001 /* ScreenshotSourceEvidence.swift in Sources */,
+				E583ACONT000000000001 /* MultimodalContentUnderstanding.swift in Sources */,
+				E583ALAB0000000000001 /* MultimodalContentUnderstandingLabClient.swift in Sources */,
+				E5VISSVC00000000000001 /* VisionVisualAnalysisService.swift in Sources */,
+				E5VISQUE00000000000001 /* VisualAnalysisProcessingQueue.swift in Sources */,
+				E5MSCLUS00000000000001 /* MultiSignalClusterer.swift in Sources */,
+				E5VISDBG00000000000001 /* VisualIntelligenceDebugInspectorView.swift in Sources */,
 				E5A10001OCRPIPE000000001 /* OCRPipeline.swift in Sources */,
 				E5A10001SRCHFTS000000001 /* SearchFTSQuery.swift in Sources */,
 				E5A10001SRCHSUG000000001 /* LocalSearchSuggestionsProvider.swift in Sources */,
@@ -530,6 +590,10 @@
 				E58000007DBAAAAAAAAAAAAAAA /* CollectionResolverTests.swift in Sources */,
 				E58000007DGWTESTAAAAAAAAAA /* UnderstandingGatewayConfigurationTests.swift in Sources */,
 				E58NETTEST00000000000001 /* OrganizationNetworkDiagnosticsTests.swift in Sources */,
+				E5VISTEST0000000000001 /* VisualIntelligenceTests.swift in Sources */,
+				E583ATEST000000000001 /* MultimodalContentUnderstandingTests.swift in Sources */,
+				E5VISQTEST0000000000001 /* VisualAnalysisQueueTests.swift in Sources */,
+				E5THUMBTEST000000000001 /* PhotoKitThumbnailDeliveryTests.swift in Sources */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};

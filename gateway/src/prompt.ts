@@ -33,8 +33,11 @@ Examples of GOOD Collection titles: "Japan Trip", "Qatar Airways Booking", "Apar
 - Be concise. summary is one short sentence.
 - confidences are 0..1.
 - candidateCollections should prefer eligible titles when they match; do not invent near-duplicate titles for the same context.
-- For batch requests: understand each member independently, and optionally propose sharedContext when several members clearly share one human context.
-- Do not invent facts absent from OCR/image/eligible profiles.`;
+- For batch requests: the primary question is which members share one real-world human context — not which fixed category each screenshot is.
+- Propose sharedContext only for the related subset (title = open-ended context summary; memberLocalIds = related members only).
+- Put unrelated / uncertain distractors in unresolvedIds — never force them into sharedContext.
+- Do not invent facts absent from OCR/image/eligible profiles.
+- Do not create Collections, reuse Collection IDs, or assign memberships — that is on-device only.`;
 
 export function buildSingleUserPrompt(input: {
   ocrNormalized?: string;
@@ -62,6 +65,10 @@ export function buildBatchUserPrompt(input: {
     ocrNormalized?: string;
     createdAt?: string;
     hasImage: boolean;
+    visualFacets?: string[];
+    sourcePlatform?: string;
+    contentType?: string;
+    contentFamily?: string;
   }>;
   eligibleCollections: unknown[];
   allowVisual: boolean;
@@ -72,11 +79,20 @@ export function buildBatchUserPrompt(input: {
     imageAttached: m.hasImage,
     ocrNormalized: m.ocrNormalized?.trim() ? m.ocrNormalized : "",
     ocrState: m.ocrNormalized?.trim() ? "present" : "empty",
+    visualFacets: m.visualFacets?.length ? m.visualFacets : undefined,
+    sourcePlatform: m.sourcePlatform || undefined,
+    contentType: m.contentType || undefined,
+    contentFamily: m.contentFamily || undefined,
   }));
 
   return [
-    "Understand this batch of related screenshots.",
-    "Return one result per member (same localId) plus optional sharedContext when they share one human Context Collection.",
+    "Understand this candidate batch of screenshots (local retrieval only — not a final Collection).",
+    "Primary question: which screenshots appear to belong to the same real-world context, and what shared context connects them?",
+    "Return one result per member (same localId).",
+    "If several members clearly share one human context, set sharedContext.title to a useful open-ended context summary (e.g. 'Trip to Abu Dhabi'), sharedContext.confidence, sharedContext.memberLocalIds (related only), and short sharedContext.evidence tags.",
+    "List distractors / unrelated / uncertain members in unresolvedIds (may be empty).",
+    "If no confident shared context exists, set sharedContext to null and put all uncertain members in unresolvedIds.",
+    "Prefer eligibleCollections titles when reusing an existing context; never invent bare type labels as Collection titles.",
     `allowVisual=${input.allowVisual}`,
     "eligibleCollections:",
     JSON.stringify(input.eligibleCollections),

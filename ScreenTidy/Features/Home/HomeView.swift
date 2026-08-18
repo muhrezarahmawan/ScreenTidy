@@ -116,6 +116,7 @@ private struct QuietPocketHomeScreen: View {
             let result = await viewModel.refreshScreenshots()
             dependencies.noteMemoryMutation()
             dependencies.ocrScheduler.kick()
+            dependencies.visualScheduler.kick()
             dependencies.feedback.show(STFeedbackCopy.sync(result))
         }
         .stTabRootScrollBackground()

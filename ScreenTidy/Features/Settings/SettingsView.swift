@@ -182,6 +182,20 @@ struct SettingsView: View {
 
                 Divider().padding(.leading, STSpacing.lg)
                 NavigationLink {
+                    VisualIntelligenceDebugInspectorView()
+                } label: {
+                    Text("Visual Intelligence")
+                        .font(STTypography.rowTitle)
+                        .foregroundStyle(STColor.primary)
+                        .frame(maxWidth: .infinity, alignment: .leading)
+                        .contentShape(Rectangle())
+                }
+                .padding(.horizontal, STSpacing.lg)
+                .padding(.vertical, STSpacing.settingsRowVertical)
+                .frame(minHeight: 44)
+
+                Divider().padding(.leading, STSpacing.lg)
+                NavigationLink {
                     ResolverDebugInspectorView()
                 } label: {
                     Text("Resolver Inspector")

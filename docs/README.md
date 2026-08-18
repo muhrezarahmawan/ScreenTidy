@@ -28,8 +28,9 @@ Single source of truth for MVP. Read in order when onboarding to the project.
 | [21_SPRINT_5_OCR.md](21_SPRINT_5_OCR.md) | Sprint 5 on-device OCR foundation — **CLOSED / ACCEPTED** |
 | [22_SPRINT_6_SEARCH.md](22_SPRINT_6_SEARCH.md) | Sprint 6 Search (FTS wired) — **CLOSED / ACCEPTED** |
 | [23_SPRINT_7_MANUAL_ORGANIZATION.md](23_SPRINT_7_MANUAL_ORGANIZATION.md) | Sprint 7 Manual Memory Organization — **CLOSED / ACCEPTED** |
-| [24_SPRINT_8_COLLECTION_RESOLVER.md](24_SPRINT_8_COLLECTION_RESOLVER.md) | Sprint 8 Collection Resolver — **OPEN (product-quality gate; Architecture C)** |
-| [25_RAILWAY_GATEWAY.md](25_RAILWAY_GATEWAY.md) | Hosted HTTPS gateway on Railway (**P0**) |
+| [26_SPRINT_8_PHASED_INTELLIGENCE.md](26_SPRINT_8_PHASED_INTELLIGENCE.md) | **Canonical** Sprint 8.0–8.8 roadmap + **Dynamic Collection Invariant** — Sprint 8 **OPEN**; **8.0**+**8.1 CLOSED**; **8.2A ACTIVE** (plan → code after APPROVAL) |
+| [24_SPRINT_8_COLLECTION_RESOLVER.md](24_SPRINT_8_COLLECTION_RESOLVER.md) | Sprint 8 Collection Resolver rules/thresholds — **OPEN** (active phase **8.1**) |
+| [25_RAILWAY_GATEWAY.md](25_RAILWAY_GATEWAY.md) | Hosted HTTPS gateway on Railway (**paused**) |
 
 Project journal (sprint reviews + decision log): [`../reviews/`](../reviews/README.md)
 

@@ -510,6 +510,102 @@ final class AppDatabase: @unchecked Sendable {
             }
         }
 
+        migrator.registerMigration("v9_visual_signals") { db in
+            let columns = try db.columns(in: "screenshot").map(\.name)
+
+            if !columns.contains("visual_status") {
+                try db.execute(sql: """
+                    ALTER TABLE screenshot ADD COLUMN visual_status TEXT NOT NULL DEFAULT 'pending'
+                        CHECK (visual_status IN ('pending', 'processing', 'completed', 'failed', 'inaccessible'));
+                    """)
+            }
+            if !columns.contains("visual_version") {
+                try db.execute(sql: "ALTER TABLE screenshot ADD COLUMN visual_version INTEGER NOT NULL DEFAULT 0")
+            }
+            if !columns.contains("visual_attempt_count") {
+                try db.execute(sql: "ALTER TABLE screenshot ADD COLUMN visual_attempt_count INTEGER NOT NULL DEFAULT 0")
+            }
+            if !columns.contains("visual_claimed_at") {
+                try db.execute(sql: "ALTER TABLE screenshot ADD COLUMN visual_claimed_at DATETIME")
+            }
+            if !columns.contains("visual_last_attempt_at") {
+                try db.execute(sql: "ALTER TABLE screenshot ADD COLUMN visual_last_attempt_at DATETIME")
+            }
+            if !columns.contains("visual_next_retry_at") {
+                try db.execute(sql: "ALTER TABLE screenshot ADD COLUMN visual_next_retry_at DATETIME")
+            }
+            if !columns.contains("visual_last_error") {
+                try db.execute(sql: "ALTER TABLE screenshot ADD COLUMN visual_last_error TEXT")
+            }
+            if !columns.contains("visual_classify_revision") {
+                try db.execute(sql: "ALTER TABLE screenshot ADD COLUMN visual_classify_revision INTEGER NOT NULL DEFAULT 0")
+            }
+            if !columns.contains("feature_print") {
+                try db.execute(sql: "ALTER TABLE screenshot ADD COLUMN feature_print BLOB")
+            }
+            if !columns.contains("feature_print_version") {
+                try db.execute(sql: "ALTER TABLE screenshot ADD COLUMN feature_print_version INTEGER NOT NULL DEFAULT 0")
+            }
+            if !columns.contains("feature_print_status") {
+                try db.execute(sql: """
+                    ALTER TABLE screenshot ADD COLUMN feature_print_status TEXT NOT NULL DEFAULT 'missing'
+                        CHECK (feature_print_status IN ('missing', 'generated', 'failed'));
+                    """)
+            }
+            if !columns.contains("visual_facets_json") {
+                try db.execute(sql: "ALTER TABLE screenshot ADD COLUMN visual_facets_json TEXT NOT NULL DEFAULT '[]'")
+            }
+            if !columns.contains("candidate_cluster_id") {
+                try db.execute(sql: "ALTER TABLE screenshot ADD COLUMN candidate_cluster_id TEXT")
+            }
+            if !columns.contains("candidate_cluster_cohesion") {
+                try db.execute(sql: "ALTER TABLE screenshot ADD COLUMN candidate_cluster_cohesion REAL")
+            }
+
+            try db.execute(sql: """
+                CREATE INDEX IF NOT EXISTS screenshot_visual_status_created_at
+                    ON screenshot(visual_status, created_at DESC);
+                """)
+            try db.execute(sql: """
+                CREATE INDEX IF NOT EXISTS screenshot_visual_status_next_retry
+                    ON screenshot(visual_status, visual_next_retry_at);
+                """)
+
+            // Existing completed Photos rows need a visual pass once; fixtures stay pending-harmless.
+            try db.execute(sql: """
+                UPDATE screenshot
+                SET visual_status = 'pending', visual_version = 0
+                WHERE source = 'photos'
+                  AND access_state = 'available'
+                  AND is_removed_from_app = 0
+                """)
+            try db.execute(sql: """
+                UPDATE screenshot
+                SET visual_status = 'completed',
+                    visual_version = 1,
+                    feature_print_status = 'missing'
+                WHERE source = 'fixture'
+                """)
+        }
+
+        migrator.registerMigration("v10_visual_raw_labels") { db in
+            let columns = try db.columns(in: "screenshot").map(\.name)
+            if !columns.contains("visual_labels_raw_json") {
+                try db.execute(sql: """
+                    ALTER TABLE screenshot ADD COLUMN visual_labels_raw_json TEXT NOT NULL DEFAULT '[]'
+                    """)
+            }
+        }
+
+        migrator.registerMigration("v11_visual_facet_evidence") { db in
+            let columns = try db.columns(in: "screenshot").map(\.name)
+            if !columns.contains("visual_facets_evidence_json") {
+                try db.execute(sql: """
+                    ALTER TABLE screenshot ADD COLUMN visual_facets_evidence_json TEXT NOT NULL DEFAULT '[]'
+                    """)
+            }
+        }
+
         return migrator
     }
 }

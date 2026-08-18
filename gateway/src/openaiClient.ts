@@ -2,14 +2,22 @@ import OpenAI from "openai";
 import type { AppConfig } from "./config.js";
 import { PROMPT_VERSION, PROVIDER, requireApiKey } from "./config.js";
 import {
+  CONTENT_PROMPT_VERSION,
+  CONTENT_SCHEMA_VERSION,
+  CONTENT_SYSTEM_PROMPT,
+} from "./contentPrompt.js";
+import { SYSTEM_PROMPT } from "./prompt.js";
+import {
   BatchUnderstandingContentSchema,
+  ContentUnderstandingContentSchema,
   OPENAI_BATCH_JSON_SCHEMA,
+  OPENAI_CONTENT_JSON_SCHEMA,
   OPENAI_SINGLE_JSON_SCHEMA,
   UnderstandingContentSchema,
   type BatchUnderstandingResponse,
+  type ContentUnderstandingResponse,
   type UnderstandingResponse,
 } from "./schemas.js";
-import { SYSTEM_PROMPT } from "./prompt.js";
 
 export class GatewayError extends Error {
   status: number;
@@ -47,6 +55,7 @@ export async function understandSingle(args: {
     client: args.client,
     model: args.config.openaiModel,
     timeoutMs: args.config.requestTimeoutMs,
+    systemPrompt: SYSTEM_PROMPT,
     schemaName: "screentidy_understanding_single",
     schema: OPENAI_SINGLE_JSON_SCHEMA,
     content,
@@ -66,6 +75,55 @@ export async function understandSingle(args: {
     provider: PROVIDER,
     promptVersion: PROMPT_VERSION,
     schemaVersion: args.config.schemaVersion,
+  };
+}
+
+export async function contentUnderstandSingle(args: {
+  client: OpenAI;
+  config: AppConfig;
+  userText: string;
+  imageDataUrl: string;
+}): Promise<ContentUnderstandingResponse> {
+  const content: ContentPart[] = [
+    { type: "input_text", text: args.userText },
+    { type: "input_image", image_url: args.imageDataUrl, detail: "auto" },
+  ];
+
+  const raw = await callResponses({
+    client: args.client,
+    model: args.config.openaiModel,
+    timeoutMs: args.config.requestTimeoutMs,
+    systemPrompt: CONTENT_SYSTEM_PROMPT,
+    schemaName: "screentidy_content_understanding_8_3a",
+    schema: OPENAI_CONTENT_JSON_SCHEMA,
+    content,
+  });
+
+  const parsed = ContentUnderstandingContentSchema.safeParse(raw);
+  if (!parsed.success) {
+    throw new GatewayError(
+      422,
+      "MODEL_OUTPUT_INVALID",
+      "Content understanding output failed server-side validation"
+    );
+  }
+
+  const banned = /\b(create collection|reuse collection|collection title|proposedNewCollection)\b/i;
+  for (const note of parsed.data.evidenceNotes) {
+    if (banned.test(note)) {
+      throw new GatewayError(
+        422,
+        "MODEL_OUTPUT_INVALID",
+        "Content understanding must not propose Collections"
+      );
+    }
+  }
+
+  return {
+    ...parsed.data,
+    provider: PROVIDER,
+    promptVersion: CONTENT_PROMPT_VERSION,
+    schemaVersion: CONTENT_SCHEMA_VERSION,
   };
 }
 
@@ -89,6 +147,7 @@ export async function understandBatch(args: {
     client: args.client,
     model: args.config.openaiModel,
     timeoutMs: args.config.requestTimeoutMs,
+    systemPrompt: SYSTEM_PROMPT,
     schemaName: "screentidy_understanding_batch",
     schema: OPENAI_BATCH_JSON_SCHEMA,
     content,
@@ -133,6 +192,29 @@ export async function understandBatch(args: {
     }
   }
 
+  for (const id of parsed.data.unresolvedIds) {
+    if (!returnedIds.has(id)) {
+      throw new GatewayError(
+        422,
+        "MODEL_OUTPUT_INVALID",
+        "unresolvedIds references unknown localId"
+      );
+    }
+  }
+
+  if (parsed.data.sharedContext) {
+    const related = new Set(parsed.data.sharedContext.memberLocalIds);
+    for (const id of related) {
+      if (parsed.data.unresolvedIds.includes(id)) {
+        throw new GatewayError(
+          422,
+          "MODEL_OUTPUT_INVALID",
+          "localId cannot be both in sharedContext and unresolvedIds"
+        );
+      }
+    }
+  }
+
   return {
     ...parsed.data,
     provider: PROVIDER,
@@ -145,6 +227,7 @@ async function callResponses(args: {
   client: OpenAI;
   model: string;
   timeoutMs: number;
+  systemPrompt: string;
   schemaName: string;
   schema: Record<string, unknown> | object;
   content: ContentPart[];
@@ -159,7 +242,7 @@ async function callResponses(args: {
         input: [
           {
             role: "system",
-            content: [{ type: "input_text", text: SYSTEM_PROMPT }],
+            content: [{ type: "input_text", text: args.systemPrompt }],
           },
           {
             role: "user",

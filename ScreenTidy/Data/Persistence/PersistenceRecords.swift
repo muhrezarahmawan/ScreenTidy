@@ -21,6 +21,7 @@ struct ScreenshotRecord: Codable, FetchableRecord, PersistableRecord {
     var facetKeysJSON: String
     var entityLabelsJSON: String
     var visualLabelsJSON: String
+    var visualLabelsRawJSON: String
     var semanticKeywordsJSON: String
     var source: String
     var accessState: String
@@ -37,6 +38,21 @@ struct ScreenshotRecord: Codable, FetchableRecord, PersistableRecord {
     var organizeLocked: Bool
     var organizeContentFingerprint: String?
     var aiSummary: String?
+    var visualStatus: String
+    var visualVersion: Int
+    var visualAttemptCount: Int
+    var visualClaimedAt: Date?
+    var visualLastAttemptAt: Date?
+    var visualNextRetryAt: Date?
+    var visualLastError: String?
+    var visualClassifyRevision: Int
+    var featurePrint: Data?
+    var featurePrintVersion: Int
+    var featurePrintStatus: String
+    var visualFacetsJSON: String
+    var visualFacetsEvidenceJSON: String
+    var candidateClusterID: String?
+    var candidateClusterCohesion: Double?
 
     enum CodingKeys: String, CodingKey {
         case id, photosLocalIdentifier = "photos_local_identifier", createdAt = "created_at"
@@ -44,7 +60,9 @@ struct ScreenshotRecord: Codable, FetchableRecord, PersistableRecord {
         case width, height, analysisStatus = "analysis_status", isRemovedFromApp = "is_removed_from_app"
         case removedAt = "removed_at", previewSymbol = "preview_symbol", ocrText = "ocr_text"
         case summary, facetKeysJSON = "facet_keys_json", entityLabelsJSON = "entity_labels_json"
-        case visualLabelsJSON = "visual_labels_json", semanticKeywordsJSON = "semantic_keywords_json"
+        case visualLabelsJSON = "visual_labels_json"
+        case visualLabelsRawJSON = "visual_labels_raw_json"
+        case semanticKeywordsJSON = "semantic_keywords_json"
         case source, accessState = "access_state"
         case ocrStatus = "ocr_status", ocrVersion = "ocr_version", ocrLanguage = "ocr_language"
         case ocrAttemptCount = "ocr_attempt_count", ocrClaimedAt = "ocr_claimed_at"
@@ -55,6 +73,17 @@ struct ScreenshotRecord: Codable, FetchableRecord, PersistableRecord {
         case organizeLocked = "organize_locked"
         case organizeContentFingerprint = "organize_content_fingerprint"
         case aiSummary = "ai_summary"
+        case visualStatus = "visual_status", visualVersion = "visual_version"
+        case visualAttemptCount = "visual_attempt_count", visualClaimedAt = "visual_claimed_at"
+        case visualLastAttemptAt = "visual_last_attempt_at", visualNextRetryAt = "visual_next_retry_at"
+        case visualLastError = "visual_last_error"
+        case visualClassifyRevision = "visual_classify_revision"
+        case featurePrint = "feature_print", featurePrintVersion = "feature_print_version"
+        case featurePrintStatus = "feature_print_status"
+        case visualFacetsJSON = "visual_facets_json"
+        case visualFacetsEvidenceJSON = "visual_facets_evidence_json"
+        case candidateClusterID = "candidate_cluster_id"
+        case candidateClusterCohesion = "candidate_cluster_cohesion"
     }
 
     init(memory: ScreenshotMemory, now: Date = Date()) {
@@ -74,7 +103,11 @@ struct ScreenshotRecord: Codable, FetchableRecord, PersistableRecord {
         summary = memory.summary
         facetKeysJSON = Self.json(memory.facetKeys)
         entityLabelsJSON = Self.json(memory.entityLabels)
-        visualLabelsJSON = Self.json(memory.visualLabels)
+        let observations = memory.visualLabelObservations.isEmpty
+            ? memory.visualLabels.map { VisualLabelObservation(identifier: $0, confidence: 1) }
+            : memory.visualLabelObservations
+        visualLabelsJSON = Self.labelsJSON(observations)
+        visualLabelsRawJSON = "[]"
         semanticKeywordsJSON = Self.json(memory.semanticKeywords)
         source = memory.source.rawValue
         accessState = memory.accessState.rawValue
@@ -91,6 +124,21 @@ struct ScreenshotRecord: Codable, FetchableRecord, PersistableRecord {
         organizeLocked = false
         organizeContentFingerprint = nil
         aiSummary = nil
+        visualStatus = memory.visualStatus.rawValue
+        visualVersion = memory.visualVersion
+        visualAttemptCount = memory.visualAttemptCount
+        visualClaimedAt = nil
+        visualLastAttemptAt = memory.visualLastAttemptAt
+        visualNextRetryAt = nil
+        visualLastError = memory.visualLastError
+        visualClassifyRevision = 0
+        featurePrint = nil
+        featurePrintVersion = memory.featurePrintVersion
+        featurePrintStatus = memory.featurePrintStatus
+        visualFacetsJSON = Self.json(memory.visualFacets)
+        visualFacetsEvidenceJSON = Self.facetEvidenceJSON(memory.visualFacetEvidence)
+        candidateClusterID = memory.candidateClusterID
+        candidateClusterCohesion = memory.candidateClusterCohesion
     }
 
     init(from decoder: Decoder) throws {
@@ -112,6 +160,7 @@ struct ScreenshotRecord: Codable, FetchableRecord, PersistableRecord {
         facetKeysJSON = try container.decode(String.self, forKey: .facetKeysJSON)
         entityLabelsJSON = try container.decode(String.self, forKey: .entityLabelsJSON)
         visualLabelsJSON = try container.decode(String.self, forKey: .visualLabelsJSON)
+        visualLabelsRawJSON = try container.decodeIfPresent(String.self, forKey: .visualLabelsRawJSON) ?? "[]"
         semanticKeywordsJSON = try container.decode(String.self, forKey: .semanticKeywordsJSON)
         source = try container.decode(String.self, forKey: .source)
         accessState = try container.decode(String.self, forKey: .accessState)
@@ -128,10 +177,27 @@ struct ScreenshotRecord: Codable, FetchableRecord, PersistableRecord {
         organizeLocked = try container.decodeIfPresent(Bool.self, forKey: .organizeLocked) ?? false
         organizeContentFingerprint = try container.decodeIfPresent(String.self, forKey: .organizeContentFingerprint)
         aiSummary = try container.decodeIfPresent(String.self, forKey: .aiSummary)
+        visualStatus = try container.decodeIfPresent(String.self, forKey: .visualStatus)
+            ?? ScreenshotVisualStatus.completed.rawValue
+        visualVersion = try container.decodeIfPresent(Int.self, forKey: .visualVersion) ?? 0
+        visualAttemptCount = try container.decodeIfPresent(Int.self, forKey: .visualAttemptCount) ?? 0
+        visualClaimedAt = try container.decodeIfPresent(Date.self, forKey: .visualClaimedAt)
+        visualLastAttemptAt = try container.decodeIfPresent(Date.self, forKey: .visualLastAttemptAt)
+        visualNextRetryAt = try container.decodeIfPresent(Date.self, forKey: .visualNextRetryAt)
+        visualLastError = try container.decodeIfPresent(String.self, forKey: .visualLastError)
+        visualClassifyRevision = try container.decodeIfPresent(Int.self, forKey: .visualClassifyRevision) ?? 0
+        featurePrint = try container.decodeIfPresent(Data.self, forKey: .featurePrint)
+        featurePrintVersion = try container.decodeIfPresent(Int.self, forKey: .featurePrintVersion) ?? 0
+        featurePrintStatus = try container.decodeIfPresent(String.self, forKey: .featurePrintStatus) ?? "missing"
+        visualFacetsJSON = try container.decodeIfPresent(String.self, forKey: .visualFacetsJSON) ?? "[]"
+        visualFacetsEvidenceJSON = try container.decodeIfPresent(String.self, forKey: .visualFacetsEvidenceJSON) ?? "[]"
+        candidateClusterID = try container.decodeIfPresent(String.self, forKey: .candidateClusterID)
+        candidateClusterCohesion = try container.decodeIfPresent(Double.self, forKey: .candidateClusterCohesion)
     }
 
     func memory() -> ScreenshotMemory? {
         guard let uuid = UUID(uuidString: id) else { return nil }
+        let observations = Self.decodeLabels(visualLabelsJSON)
         return ScreenshotMemory(
             id: ScreenshotMemoryID(uuid),
             createdAt: createdAt,
@@ -141,7 +207,10 @@ struct ScreenshotRecord: Codable, FetchableRecord, PersistableRecord {
             facetKeys: Self.array(facetKeysJSON),
             entityLabels: Self.array(entityLabelsJSON),
             previewSymbol: previewSymbol,
-            visualLabels: Self.array(visualLabelsJSON),
+            visualLabels: observations.map(\.identifier),
+            visualLabelObservations: observations,
+            visualFacets: Self.array(visualFacetsJSON),
+            visualFacetEvidence: Self.decodeFacetEvidence(visualFacetsEvidenceJSON),
             semanticKeywords: Self.array(semanticKeywordsJSON),
             photosLocalIdentifier: photosLocalIdentifier,
             source: ScreenshotSource(rawValue: source) ?? .fixture,
@@ -150,7 +219,16 @@ struct ScreenshotRecord: Codable, FetchableRecord, PersistableRecord {
             ocrVersion: ocrVersion,
             ocrAttemptCount: ocrAttemptCount,
             ocrLastAttemptAt: ocrLastAttemptAt,
-            ocrLastError: ocrLastError
+            ocrLastError: ocrLastError,
+            visualStatus: ScreenshotVisualStatus(rawValue: visualStatus) ?? .completed,
+            visualVersion: visualVersion,
+            visualAttemptCount: visualAttemptCount,
+            visualLastAttemptAt: visualLastAttemptAt,
+            visualLastError: visualLastError,
+            featurePrintStatus: featurePrintStatus,
+            featurePrintVersion: featurePrintVersion,
+            candidateClusterID: candidateClusterID,
+            candidateClusterCohesion: candidateClusterCohesion
         )
     }
 }
@@ -272,6 +350,33 @@ extension ScreenshotRecord {
     static func array(_ json: String) -> [String] {
         guard let data = json.data(using: .utf8),
               let values = try? JSONDecoder().decode([String].self, from: data)
+        else { return [] }
+        return values
+    }
+
+    static func labelsJSON(_ values: [VisualLabelObservation]) -> String {
+        (try? String(data: JSONEncoder().encode(values), encoding: .utf8)) ?? "[]"
+    }
+
+    /// Accepts P1 object array or legacy string array.
+    static func decodeLabels(_ json: String) -> [VisualLabelObservation] {
+        guard let data = json.data(using: .utf8) else { return [] }
+        if let objects = try? JSONDecoder().decode([VisualLabelObservation].self, from: data) {
+            return objects
+        }
+        if let strings = try? JSONDecoder().decode([String].self, from: data) {
+            return strings.map { VisualLabelObservation(identifier: $0, confidence: 1) }
+        }
+        return []
+    }
+
+    static func facetEvidenceJSON(_ values: [FacetEvidence]) -> String {
+        (try? String(data: JSONEncoder().encode(values), encoding: .utf8)) ?? "[]"
+    }
+
+    static func decodeFacetEvidence(_ json: String) -> [FacetEvidence] {
+        guard let data = json.data(using: .utf8),
+              let values = try? JSONDecoder().decode([FacetEvidence].self, from: data)
         else { return [] }
         return values
     }

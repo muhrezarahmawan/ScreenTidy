@@ -43,6 +43,9 @@ struct OCRResult: Sendable, Equatable {
 
 enum OCRJobError: Error, Sendable {
     case imageUnavailable
+    case photokitTimeout
+    case photokitMissingAsset
+    case photokitNoCGImage
     case visionFailed(String)
 }
 

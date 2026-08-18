@@ -21,7 +21,8 @@ struct CompositeUnderstandingProvider: UnderstandingProviding {
         var enriched = input
         let normalized = OrganizationOCRNormalizer.normalize(input.ocrText)
         let cloudURL = UnderstandingGatewayConfiguration.baseURL(from: configuration)
-        let needsImage = input.allowMultimodal && (normalized.isEmpty || cloudURL != nil)
+        let useBatch = input.batchMembers.count > 1
+        let needsImage = input.allowMultimodal && (normalized.isEmpty || cloudURL != nil || useBatch)
 
         OrganizationPipelineDebugStore.update(
             screenshotID: input.screenshotID,
@@ -30,30 +31,44 @@ struct CompositeUnderstandingProvider: UnderstandingProviding {
             gatewayHost: cloudURL?.host,
             ocrAttached: !normalized.isEmpty,
             collectionContextAttached: !input.eligibleCollectionContexts.isEmpty,
-            batchContext: input.batchMemberIDs.count > 1
+            batchContext: useBatch
         )
 
-        if needsImage, enriched.imageJPEGData == nil, let localID = input.photosLocalIdentifier {
+        if useBatch {
+            enriched.batchMembers = await loadBatchImages(enriched.batchMembers)
+            if let seed = enriched.batchMembers.first(where: {
+                $0.localID == input.screenshotID.rawValue.uuidString
+            }) {
+                enriched.imageJPEGData = seed.imageJPEGData ?? enriched.imageJPEGData
+            }
+        } else if needsImage, enriched.imageJPEGData == nil, let localID = input.photosLocalIdentifier {
             if let uiImage = await imageLoader.loadUIImage(localIdentifier: localID),
                let jpeg = MultimodalImageEncoder.jpegData(from: uiImage) {
                 enriched.imageJPEGData = jpeg
             }
         }
 
+        let imageAttached = useBatch
+            ? enriched.batchMembers.contains(where: { $0.imageJPEGData != nil })
+            : enriched.imageJPEGData != nil
+
         OrganizationPipelineDebugStore.update(
             screenshotID: input.screenshotID,
-            stage: enriched.imageJPEGData == nil ? .ocrAttached : .imageLoaded,
-            detail: enriched.imageJPEGData == nil
-                ? "Image not attached (OCR-only or load failed)"
-                : "JPEG attached (\(enriched.imageJPEGData?.count ?? 0) bytes metadata only)",
-            imageAttached: enriched.imageJPEGData != nil,
-            ocrAttached: !normalized.isEmpty
+            stage: imageAttached ? .imageLoaded : .ocrAttached,
+            detail: imageAttached
+                ? (useBatch
+                    ? "Batch JPEGs attached for \(enriched.batchMembers.filter { $0.imageJPEGData != nil }.count)/\(enriched.batchMembers.count) members"
+                    : "JPEG attached (\(enriched.imageJPEGData?.count ?? 0) bytes metadata only)")
+                : "Image not attached (OCR-only or load failed)",
+            imageAttached: imageAttached,
+            ocrAttached: !normalized.isEmpty,
+            batchContext: useBatch
         )
 
         if input.allowMultimodal, let cloudURL {
             let cloud = EphemeralMultimodalUnderstandingProvider(baseURL: cloudURL)
             // Image-only must have pixels for multimodal attempt.
-            if normalized.isEmpty, enriched.imageJPEGData == nil {
+            if !useBatch, normalized.isEmpty, enriched.imageJPEGData == nil {
                 OrganizationPipelineDebugStore.update(
                     screenshotID: input.screenshotID,
                     stage: .failed,
@@ -103,5 +118,22 @@ struct CompositeUnderstandingProvider: UnderstandingProviding {
             provider: onDeviceResult.provider
         )
         return onDeviceResult
+    }
+
+    private func loadBatchImages(
+        _ members: [UnderstandingBatchMemberPayload]
+    ) async -> [UnderstandingBatchMemberPayload] {
+        var loaded: [UnderstandingBatchMemberPayload] = []
+        loaded.reserveCapacity(members.count)
+        for var member in members {
+            if member.imageJPEGData == nil, let localID = member.photosLocalIdentifier, !localID.isEmpty {
+                if let uiImage = await imageLoader.loadUIImage(localIdentifier: localID),
+                   let jpeg = MultimodalImageEncoder.jpegData(from: uiImage) {
+                    member.imageJPEGData = jpeg
+                }
+            }
+            loaded.append(member)
+        }
+        return loaded
     }
 }

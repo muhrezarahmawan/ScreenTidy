@@ -50,7 +50,8 @@ struct MockThumbnailProvider: ThumbnailProviding {
         targetSize: CGSize,
         contentMode: ThumbnailContentMode,
         allowsNetworkAccess: Bool,
-        progressHandler: (@Sendable (Double) -> Void)?
+        progressHandler: (@Sendable (Double) -> Void)?,
+        requestID: UUID
     ) async -> ThumbnailResult? { nil }
 
     func cancelRequest(_ requestID: UUID) {}

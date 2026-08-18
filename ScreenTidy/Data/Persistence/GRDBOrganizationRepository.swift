@@ -39,6 +39,7 @@ extension GRDBMemoryRepository: OrganizationPersisting {
                          OR (
                                 organize_status = 'idle'
                             AND ocr_status IN ('completed', 'failed')
+                            AND visual_status IN ('completed', 'failed', 'inaccessible')
                          )
                       )
                     ORDER BY
@@ -603,12 +604,12 @@ extension GRDBMemoryRepository: OrganizationPersisting {
         }
     }
 
-    func fetchPendingOrganizeMembers(limit: Int) async throws -> [(id: ScreenshotMemoryID, createdAt: Date?, ocrText: String?)] {
+    func fetchPendingOrganizeMembers(limit: Int) async throws -> [OrganizationClusterMemberSnapshot] {
         try await database.dbPool.read { db in
-            let rows = try Row.fetchAll(
+            let records = try ScreenshotRecord.fetchAll(
                 db,
                 sql: """
-                    SELECT id, created_at, ocr_text FROM screenshot
+                    SELECT * FROM screenshot
                     WHERE is_removed_from_app = 0
                       AND organize_locked = 0
                       AND organize_status IN ('pending', 'pendingNetwork', 'failed', 'idle')
@@ -617,11 +618,17 @@ extension GRDBMemoryRepository: OrganizationPersisting {
                     """,
                 arguments: [limit]
             )
-            return rows.compactMap { row in
-                guard let idString: String = row["id"],
-                      let uuid = UUID(uuidString: idString)
-                else { return nil }
-                return (ScreenshotMemoryID(uuid), row["created_at"], row["ocr_text"])
+            return records.compactMap { record in
+                guard let memory = record.memory() else { return nil }
+                return OrganizationClusterMemberSnapshot(
+                    id: memory.id,
+                    createdAt: memory.createdAt,
+                    ocrText: memory.ocrText,
+                    visualLabels: memory.visualLabels,
+                    visualFacets: memory.visualFacets,
+                    featurePrintData: record.featurePrint,
+                    photosLocalIdentifier: memory.photosLocalIdentifier
+                )
             }
         }
     }

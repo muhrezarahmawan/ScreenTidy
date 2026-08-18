@@ -1,7 +1,7 @@
 import Foundation
 import GRDB
 
-actor GRDBMemoryRepository: MemoryRepository, ScreenshotIngesting, SearchProviding, CleanupProviding, Organizing, PhotoLibraryPersisting, OCRPersisting {
+actor GRDBMemoryRepository: MemoryRepository, ScreenshotIngesting, SearchProviding, CleanupProviding, Organizing, PhotoLibraryPersisting, OCRPersisting, VisualAnalysisPersisting {
     let database: AppDatabase
     private let oldThresholdMonths = 6
     private var pendingUndo: (MockUndoToken, String)?
@@ -673,6 +673,15 @@ actor GRDBMemoryRepository: MemoryRepository, ScreenshotIngesting, SearchProvidi
                                   record.ocrVersion < OCRPipeline.currentVersion {
                             record.ocrStatus = ScreenshotOCRStatus.pending.rawValue
                         }
+                        if record.visualStatus == ScreenshotVisualStatus.inaccessible.rawValue {
+                            record.visualStatus = ScreenshotVisualStatus.pending.rawValue
+                            record.visualClaimedAt = nil
+                            record.visualNextRetryAt = nil
+                            record.visualLastError = nil
+                        } else if record.visualStatus == ScreenshotVisualStatus.completed.rawValue,
+                                  record.visualVersion < VisualAnalysisPipeline.currentVersion {
+                            record.visualStatus = ScreenshotVisualStatus.pending.rawValue
+                        }
                     }
                     try record.update(db)
                 } else {
@@ -689,13 +698,17 @@ actor GRDBMemoryRepository: MemoryRepository, ScreenshotIngesting, SearchProvidi
                         source: .photos,
                         accessState: .available,
                         ocrStatus: .pending,
-                        ocrVersion: 0
+                        ocrVersion: 0,
+                        visualStatus: .pending,
+                        visualVersion: 0
                     )
                     var record = ScreenshotRecord(memory: memory)
                     record.width = asset.width
                     record.height = asset.height
                     record.ocrStatus = ScreenshotOCRStatus.pending.rawValue
                     record.ocrVersion = 0
+                    record.visualStatus = ScreenshotVisualStatus.pending.rawValue
+                    record.visualVersion = 0
                     try record.insert(db)
                     try MembershipRecord(
                         screenshotID: record.id,
@@ -727,6 +740,14 @@ actor GRDBMemoryRepository: MemoryRepository, ScreenshotIngesting, SearchProvidi
                         ocr_claimed_at = CASE
                             WHEN ocr_status IN ('pending', 'processing') THEN NULL
                             ELSE ocr_claimed_at
+                        END,
+                        visual_status = CASE
+                            WHEN visual_status IN ('pending', 'processing') THEN 'inaccessible'
+                            ELSE visual_status
+                        END,
+                        visual_claimed_at = CASE
+                            WHEN visual_status IN ('pending', 'processing') THEN NULL
+                            ELSE visual_claimed_at
                         END
                     WHERE photos_local_identifier = ? AND source = 'photos'
                     """, arguments: [Date(), identifier])
@@ -1004,6 +1025,843 @@ actor GRDBMemoryRepository: MemoryRepository, ScreenshotIngesting, SearchProvidi
                   AND access_state = 'available'
                   AND is_removed_from_app = 0
                 """, arguments: [Date()])
+        }
+    }
+
+    // MARK: - Visual analysis (P1)
+
+    func recoverStaleVisualClaims(olderThan date: Date) async throws -> Int {
+        try await database.dbPool.write { db in
+            try db.execute(sql: """
+                UPDATE screenshot
+                SET visual_status = 'pending',
+                    visual_claimed_at = NULL,
+                    updated_at = ?
+                WHERE visual_status = 'processing'
+                  AND (visual_claimed_at IS NULL OR visual_claimed_at < ?)
+                  AND access_state = 'available'
+                  AND is_removed_from_app = 0
+                """, arguments: [Date(), date])
+            return db.changesCount
+        }
+    }
+
+    func enqueueStaleVersionVisual(currentVersion: Int) async throws -> Int {
+        try await database.dbPool.write { db in
+            try db.execute(sql: """
+                UPDATE screenshot
+                SET visual_status = 'pending',
+                    visual_claimed_at = NULL,
+                    visual_next_retry_at = NULL,
+                    updated_at = ?
+                WHERE source = 'photos'
+                  AND access_state = 'available'
+                  AND is_removed_from_app = 0
+                  AND (
+                    visual_status = 'completed' AND visual_version < ?
+                    OR visual_status = 'failed' AND visual_next_retry_at IS NOT NULL AND visual_next_retry_at <= ?
+                  )
+                """, arguments: [Date(), currentVersion, Date()])
+            return db.changesCount
+        }
+    }
+
+    func claimNextVisualJob(currentVersion: Int, now: Date) async throws -> VisualAnalysisClaim? {
+        try await database.dbPool.write { db in
+            try db.execute(sql: """
+                UPDATE screenshot
+                SET visual_status = 'pending', visual_next_retry_at = NULL, updated_at = ?
+                WHERE visual_status = 'failed'
+                  AND access_state = 'available'
+                  AND is_removed_from_app = 0
+                  AND visual_next_retry_at IS NOT NULL
+                  AND visual_next_retry_at <= ?
+                """, arguments: [now, now])
+
+            guard let row = try Row.fetchOne(db, sql: """
+                SELECT id, photos_local_identifier FROM screenshot
+                WHERE visual_status = 'pending'
+                  AND access_state = 'available'
+                  AND is_removed_from_app = 0
+                  AND source = 'photos'
+                  AND photos_local_identifier IS NOT NULL
+                  AND length(photos_local_identifier) > 0
+                ORDER BY created_at DESC
+                LIMIT 1
+                """)
+            else { return nil }
+
+            let idString: String = row["id"]
+            let localID: String = row["photos_local_identifier"]
+            try db.execute(sql: """
+                UPDATE screenshot
+                SET visual_status = 'processing',
+                    visual_claimed_at = ?,
+                    visual_last_attempt_at = ?,
+                    updated_at = ?
+                WHERE id = ? AND visual_status = 'pending'
+                """, arguments: [now, now, now, idString])
+            guard db.changesCount == 1, let uuid = UUID(uuidString: idString) else { return nil }
+            return VisualAnalysisClaim(id: ScreenshotMemoryID(uuid), photosLocalIdentifier: localID)
+        }
+    }
+
+    func completeVisualSuccess(
+        id: ScreenshotMemoryID,
+        result: VisualAnalysisResult,
+        version: Int
+    ) async throws {
+        try await database.dbPool.write { db in
+            let ocrText = try String.fetchOne(
+                db,
+                sql: "SELECT ocr_text FROM screenshot WHERE id = ?",
+                arguments: [id.rawValue.uuidString]
+            )
+            let evidence = ScreenshotFacetDeriver.evaluate(ocrText: ocrText, labels: result.labels)
+            // Strong semantic facets only — never persist legacy `image_only` as a type.
+            let facets = evidence
+                .filter { $0.strength == .strong && $0.id != "image_only" }
+                .map(\.id)
+                .sorted()
+            let evidenceForPersist = evidence.filter { $0.id != "image_only" }
+            let labelsJSON = ScreenshotRecord.labelsJSON(result.labels)
+            let rawLabelsJSON = ScreenshotRecord.labelsJSON(result.rawLabels)
+            let facetsJSON = ScreenshotRecord.json(facets)
+            let evidenceJSON = ScreenshotRecord.facetEvidenceJSON(evidenceForPersist)
+            let printStatus: String = {
+                switch result.featurePrintStatus {
+                case "generated", "failed", "missing":
+                    return result.featurePrintStatus
+                default:
+                    return result.featurePrintData == nil ? "failed" : "generated"
+                }
+            }()
+            // Partial success keeps labels; clear job-level error. FP stage is in feature_print_status.
+            try db.execute(sql: """
+                UPDATE screenshot
+                SET visual_labels_json = ?,
+                    visual_labels_raw_json = ?,
+                    visual_facets_json = ?,
+                    visual_facets_evidence_json = ?,
+                    visual_status = 'completed',
+                    visual_version = ?,
+                    visual_classify_revision = ?,
+                    feature_print = ?,
+                    feature_print_version = ?,
+                    feature_print_status = ?,
+                    visual_claimed_at = NULL,
+                    visual_next_retry_at = NULL,
+                    visual_last_error = NULL,
+                    updated_at = ?
+                WHERE id = ?
+                """, arguments: [
+                labelsJSON,
+                rawLabelsJSON,
+                facetsJSON,
+                evidenceJSON,
+                version,
+                result.classifyRevision,
+                result.featurePrintData,
+                result.featurePrintRevision,
+                printStatus,
+                Date(),
+                id.rawValue.uuidString
+            ])
+        }
+    }
+
+    func completeVisualFailure(id: ScreenshotMemoryID, errorCode: String) async throws {
+        try await database.dbPool.write { db in
+            let attempt = (try Int.fetchOne(
+                db,
+                sql: "SELECT visual_attempt_count FROM screenshot WHERE id = ?",
+                arguments: [id.rawValue.uuidString]
+            ) ?? 0) + 1
+            let next: Date? = attempt >= VisualAnalysisPipeline.maxAttempts
+                ? nil
+                : Date().addingTimeInterval(VisualAnalysisPipeline.retryDelay(afterAttempt: attempt))
+            // Bound persisted codes — never store huge Vision dumps.
+            let bounded = VisualAnalysisErrorCode.sanitizeDebugNote(errorCode, maxLength: 64)
+            try db.execute(sql: """
+                UPDATE screenshot
+                SET visual_status = 'failed',
+                    visual_attempt_count = ?,
+                    visual_claimed_at = NULL,
+                    visual_last_attempt_at = ?,
+                    visual_next_retry_at = ?,
+                    visual_last_error = ?,
+                    feature_print_status = 'failed',
+                    updated_at = ?
+                WHERE id = ?
+                """, arguments: [attempt, Date(), next, bounded, Date(), id.rawValue.uuidString])
+        }
+    }
+
+    func completeVisualInaccessible(id: ScreenshotMemoryID, errorCode: String) async throws {
+        try await database.dbPool.write { db in
+            try db.execute(sql: """
+                UPDATE screenshot
+                SET visual_status = 'inaccessible',
+                    access_state = 'inaccessible',
+                    visual_claimed_at = NULL,
+                    visual_next_retry_at = NULL,
+                    visual_last_error = ?,
+                    feature_print_status = 'failed',
+                    updated_at = ?
+                WHERE id = ?
+                """, arguments: [errorCode, Date(), id.rawValue.uuidString])
+        }
+    }
+
+    func fetchVisualClaimabilityBreakdown() async throws -> VisualClaimabilityBreakdown {
+        try await database.dbPool.read { db in
+            let pendingTotal = try Int.fetchOne(
+                db,
+                sql: "SELECT COUNT(*) FROM screenshot WHERE source = 'photos' AND visual_status = 'pending'",
+                arguments: []
+            ) ?? 0
+            let claimable = try Int.fetchOne(
+                db,
+                sql: """
+                    SELECT COUNT(*) FROM screenshot
+                    WHERE source = 'photos'
+                      AND visual_status = 'pending'
+                      AND access_state = 'available'
+                      AND is_removed_from_app = 0
+                      AND photos_local_identifier IS NOT NULL
+                      AND length(photos_local_identifier) > 0
+                    """
+            ) ?? 0
+            let missingLocalID = try Int.fetchOne(
+                db,
+                sql: """
+                    SELECT COUNT(*) FROM screenshot
+                    WHERE source = 'photos'
+                      AND visual_status = 'pending'
+                      AND is_removed_from_app = 0
+                      AND (photos_local_identifier IS NULL OR length(photos_local_identifier) = 0)
+                    """
+            ) ?? 0
+            let removedFromApp = try Int.fetchOne(
+                db,
+                sql: """
+                    SELECT COUNT(*) FROM screenshot
+                    WHERE source = 'photos'
+                      AND visual_status = 'pending'
+                      AND is_removed_from_app = 1
+                    """
+            ) ?? 0
+            let inaccessibleAccess = try Int.fetchOne(
+                db,
+                sql: """
+                    SELECT COUNT(*) FROM screenshot
+                    WHERE source = 'photos'
+                      AND visual_status = 'pending'
+                      AND access_state = 'inaccessible'
+                      AND is_removed_from_app = 0
+                    """
+            ) ?? 0
+            let breakdown = VisualClaimabilityBreakdown(
+                pendingTotal: pendingTotal,
+                claimable: claimable,
+                missingLocalID: missingLocalID,
+                removedFromApp: removedFromApp,
+                inaccessibleAccess: inaccessibleAccess
+            )
+            VisualAnalysisDebugRuntime.update {
+                $0.pendingTotal = pendingTotal
+                $0.claimablePending = claimable
+                $0.pendingMissingLocalID = missingLocalID
+                $0.pendingRemovedFromApp = removedFromApp
+                $0.pendingInaccessibleAccess = inaccessibleAccess
+            }
+            return breakdown
+        }
+    }
+
+    func fetchVisualStatusCounts() async throws -> VisualAnalysisStatusCounts {
+        _ = try? await fetchVisualClaimabilityBreakdown()
+        return try await database.dbPool.read { db in
+            func count(_ status: String) throws -> Int {
+                try Int.fetchOne(
+                    db,
+                    sql: "SELECT COUNT(*) FROM screenshot WHERE source = 'photos' AND visual_status = ?",
+                    arguments: [status]
+                ) ?? 0
+            }
+            let completedFPFailed = try Int.fetchOne(
+                db,
+                sql: """
+                    SELECT COUNT(*) FROM screenshot
+                    WHERE source = 'photos'
+                      AND visual_status = 'completed'
+                      AND feature_print_status = 'failed'
+                    """
+            ) ?? 0
+            return VisualAnalysisStatusCounts(
+                pending: try count("pending"),
+                processing: try count("processing"),
+                completed: try count("completed"),
+                failed: try count("failed"),
+                inaccessible: try count("inaccessible"),
+                completedFeaturePrintFailed: completedFPFailed
+            )
+        }
+    }
+
+    func fetchVisualFailureSummary() async throws -> VisualFailureSummary {
+        try await database.dbPool.read { db in
+            let totalFailed = try Int.fetchOne(
+                db,
+                sql: "SELECT COUNT(*) FROM screenshot WHERE source = 'photos' AND visual_status = 'failed'"
+            ) ?? 0
+
+            let reasonRows = try Row.fetchAll(
+                db,
+                sql: """
+                    SELECT COALESCE(visual_last_error, '(nil)') AS code, COUNT(*) AS cnt
+                    FROM screenshot
+                    WHERE source = 'photos' AND visual_status = 'failed'
+                    GROUP BY COALESCE(visual_last_error, '(nil)')
+                    ORDER BY cnt DESC, code ASC
+                    """
+            )
+            let byErrorCode = reasonRows.map { row in
+                VisualFailureReasonCount(code: row["code"], count: row["cnt"])
+            }
+
+            let attemptRows = try Row.fetchAll(
+                db,
+                sql: """
+                    SELECT visual_attempt_count AS attempts, COUNT(*) AS cnt
+                    FROM screenshot
+                    WHERE source = 'photos' AND visual_status = 'failed'
+                    GROUP BY visual_attempt_count
+                    ORDER BY visual_attempt_count ASC
+                    """
+            )
+            let attemptBuckets = attemptRows.map { row -> VisualFailureAttemptBucket in
+                let attempts: Int = row["attempts"]
+                let count: Int = row["cnt"]
+                return VisualFailureAttemptBucket(label: "attempts=\(attempts)", count: count)
+            }
+
+            return VisualFailureSummary(
+                totalFailed: totalFailed,
+                byErrorCode: byErrorCode,
+                attemptBuckets: attemptBuckets
+            )
+        }
+    }
+
+    func fetchFeaturePrintData(id: ScreenshotMemoryID) async throws -> Data? {
+        try await database.dbPool.read { db in
+            try Data.fetchOne(
+                db,
+                sql: "SELECT feature_print FROM screenshot WHERE id = ?",
+                arguments: [id.rawValue.uuidString]
+            )
+        }
+    }
+
+    func requestVisualReprocess(id: ScreenshotMemoryID) async throws {
+        try await database.dbPool.write { db in
+            try db.execute(sql: """
+                UPDATE screenshot
+                SET visual_status = 'pending',
+                    visual_version = 0,
+                    visual_attempt_count = 0,
+                    visual_claimed_at = NULL,
+                    visual_next_retry_at = NULL,
+                    visual_last_error = NULL,
+                    visual_labels_json = '[]',
+                    visual_labels_raw_json = '[]',
+                    visual_facets_json = '[]',
+                    visual_facets_evidence_json = '[]',
+                    feature_print = NULL,
+                    feature_print_status = 'missing',
+                    feature_print_version = 0,
+                    updated_at = ?
+                WHERE id = ?
+                  AND access_state = 'available'
+                  AND is_removed_from_app = 0
+                """, arguments: [Date(), id.rawValue.uuidString])
+        }
+    }
+
+    func requestVisualReprocessAll(currentVersion: Int) async throws {
+        try await database.dbPool.write { db in
+            try db.execute(sql: """
+                UPDATE screenshot
+                SET visual_status = 'pending',
+                    visual_version = 0,
+                    visual_attempt_count = 0,
+                    visual_claimed_at = NULL,
+                    visual_next_retry_at = NULL,
+                    visual_last_error = NULL,
+                    visual_labels_json = '[]',
+                    visual_labels_raw_json = '[]',
+                    visual_facets_json = '[]',
+                    visual_facets_evidence_json = '[]',
+                    feature_print = NULL,
+                    feature_print_status = 'missing',
+                    feature_print_version = 0,
+                    updated_at = ?
+                WHERE source = 'photos'
+                  AND access_state = 'available'
+                  AND is_removed_from_app = 0
+                """, arguments: [Date()])
+        }
+    }
+
+    func tryMarkReadyForOrganize(id: ScreenshotMemoryID) async throws {
+        try await database.dbPool.write { db in
+            guard let row = try Row.fetchOne(
+                db,
+                sql: """
+                    SELECT ocr_status, visual_status, organize_status, organize_locked
+                    FROM screenshot WHERE id = ?
+                    """,
+                arguments: [id.rawValue.uuidString]
+            ) else { return }
+
+            let ocr: String = row["ocr_status"]
+            let visual: String = row["visual_status"]
+            let organize: String = row["organize_status"]
+            let locked: Bool = row["organize_locked"]
+            guard !locked else { return }
+
+            let ocrReady = ["completed", "failed", "inaccessible"].contains(ocr)
+            let visualReady = ["completed", "failed", "inaccessible"].contains(visual)
+            guard ocrReady, visualReady else { return }
+
+            // Don't interrupt active organize / already ready unless idle/pendingNetwork/failed.
+            let resumable = ["idle", "pendingNetwork", "failed", "skippedNoConsent"].contains(organize)
+            guard resumable else { return }
+
+            try db.execute(sql: """
+                UPDATE screenshot
+                SET organize_status = 'pending',
+                    analysis_status = 'pendingOrganize',
+                    updated_at = ?
+                WHERE id = ?
+                """, arguments: [Date(), id.rawValue.uuidString])
+        }
+    }
+
+    func fetchVisualDebugListPage(offset: Int, limit: Int) async throws -> [VisualAnalysisDebugSnapshot] {
+        let safeOffset = max(0, offset)
+        let safeLimit = max(0, limit)
+        guard safeLimit > 0 else { return [] }
+
+        let rows: [(ScreenshotMemory, Data?, Date, String)] = try await database.dbPool.read { db in
+            let records = try ScreenshotRecord.fetchAll(db, sql: """
+                SELECT * FROM screenshot
+                WHERE source = 'photos'
+                  AND is_removed_from_app = 0
+                  AND visual_status = 'completed'
+                ORDER BY created_at DESC, id DESC
+                LIMIT ? OFFSET ?
+                """, arguments: [safeLimit, safeOffset])
+            return records.compactMap { record in
+                guard let memory = record.memory() else { return nil }
+                return (memory, record.featurePrint, record.updatedAt, record.visualLabelsRawJSON)
+            }
+        }
+        // Lightweight list: persisted metadata only — no neighbor / cluster work.
+        return try await buildVisualDebugSnapshots(rows: rows, includeNeighbors: false)
+    }
+
+    func fetchVisualDebugDetailSnapshot(id: ScreenshotMemoryID) async throws -> VisualAnalysisDebugSnapshot? {
+        let rows: [(ScreenshotMemory, Data?, Date, String)] = try await database.dbPool.read { db in
+            let records = try ScreenshotRecord.fetchAll(db, sql: """
+                SELECT * FROM screenshot
+                WHERE id = ?
+                LIMIT 1
+                """, arguments: [id.rawValue.uuidString])
+            return records.compactMap { record in
+                guard let memory = record.memory() else { return nil }
+                return (memory, record.featurePrint, record.updatedAt, record.visualLabelsRawJSON)
+            }
+        }
+        guard !rows.isEmpty else { return nil }
+        return try await buildVisualDebugSnapshots(rows: rows, includeNeighbors: true).first
+    }
+
+    func fetchVisualDebugSnapshots(limit: Int) async throws -> [VisualAnalysisDebugSnapshot] {
+        try await fetchVisualDebugListPage(offset: 0, limit: limit)
+    }
+
+    func fetchVisualFailedDebugSnapshots(limit: Int) async throws -> [VisualAnalysisDebugSnapshot] {
+        let rows: [(ScreenshotMemory, Data?, Date, String)] = try await database.dbPool.read { db in
+            let records = try ScreenshotRecord.fetchAll(db, sql: """
+                SELECT * FROM screenshot
+                WHERE source = 'photos'
+                  AND visual_status = 'failed'
+                ORDER BY updated_at DESC
+                LIMIT ?
+                """, arguments: [limit])
+            return records.compactMap { record in
+                guard let memory = record.memory() else { return nil }
+                return (memory, record.featurePrint, record.updatedAt, record.visualLabelsRawJSON)
+            }
+        }
+        return try await buildVisualDebugSnapshots(rows: rows, includeNeighbors: false)
+    }
+
+    /// DEBUG-only peer pool for candidate grouping (independent of FP neighbors / list page).
+    private static let visualDebugClusterPeerLimit = 200
+
+    private func buildVisualDebugSnapshots(
+        rows: [(ScreenshotMemory, Data?, Date, String)],
+        includeNeighbors: Bool
+    ) async throws -> [VisualAnalysisDebugSnapshot] {
+        let eligible = includeNeighbors ? ((try? await fetchOrganizationEligibleCollections()) ?? []) : []
+        let profileTitles = eligible
+            .filter { $0.kind != .unassigned }
+            .map(\.title)
+
+        // Broader neighbor pool for feature-print similarity (visual only — not grouping candidates).
+        let neighborPool: [(ScreenshotMemoryID, String?, Data)] = includeNeighbors
+            ? (try await database.dbPool.read { db in
+                let records = try ScreenshotRecord.fetchAll(db, sql: """
+                    SELECT * FROM screenshot
+                    WHERE source = 'photos'
+                      AND is_removed_from_app = 0
+                      AND visual_status = 'completed'
+                      AND feature_print IS NOT NULL
+                      AND feature_print_status = 'generated'
+                    ORDER BY created_at DESC
+                    LIMIT 200
+                    """)
+                return records.compactMap { record in
+                    guard let uuid = UUID(uuidString: record.id), let print = record.featurePrint else { return nil }
+                    return (ScreenshotMemoryID(uuid), record.photosLocalIdentifier, print)
+                }
+            })
+            : []
+
+        // Candidate-grouping peer pool: eligible completed screenshots (not FP-neighbor list, not list page).
+        let clusterPeerRows: [(ScreenshotMemory, Data?)] = includeNeighbors
+            ? (try await database.dbPool.read { db in
+                let records = try ScreenshotRecord.fetchAll(db, sql: """
+                    SELECT * FROM screenshot
+                    WHERE source = 'photos'
+                      AND is_removed_from_app = 0
+                      AND visual_status = 'completed'
+                    ORDER BY created_at DESC, id DESC
+                    LIMIT ?
+                    """, arguments: [Self.visualDebugClusterPeerLimit])
+                return records.compactMap { record in
+                    guard let memory = record.memory() else { return nil }
+                    return (memory, record.featurePrint)
+                }
+            })
+            : []
+
+        var localIDByScreenshot: [ScreenshotMemoryID: String?] = Dictionary(
+            uniqueKeysWithValues: rows.map { ($0.0.id, $0.0.photosLocalIdentifier) }
+        )
+        for (memory, _) in clusterPeerRows {
+            localIDByScreenshot[memory.id] = memory.photosLocalIdentifier
+        }
+
+        let members: [MultiSignalClusterer.Member] = includeNeighbors
+            ? {
+                var byID: [ScreenshotMemoryID: MultiSignalClusterer.Member] = [:]
+                for (memory, printData) in clusterPeerRows {
+                    byID[memory.id] = Self.clusterMember(
+                        memory: memory,
+                        printData: printData,
+                        profileTitles: profileTitles,
+                        profileMatch: profileMatchScore(for: memory, titles: profileTitles),
+                        matchingTitles: matchingProfileTitles(for: memory, titles: profileTitles)
+                    )
+                }
+                // Ensure the detail seed is present even if outside the recent peer window.
+                for (memory, printData, _, _) in rows {
+                    if byID[memory.id] == nil {
+                        byID[memory.id] = Self.clusterMember(
+                            memory: memory,
+                            printData: printData,
+                            profileTitles: profileTitles,
+                            profileMatch: profileMatchScore(for: memory, titles: profileTitles),
+                            matchingTitles: matchingProfileTitles(for: memory, titles: profileTitles)
+                        )
+                    }
+                }
+                return Array(byID.values)
+            }()
+            : []
+
+        var snapshots: [VisualAnalysisDebugSnapshot] = []
+        snapshots.reserveCapacity(rows.count)
+
+        for quadruple in rows {
+            let memory = quadruple.0
+            let printData = quadruple.1
+            let updatedAt = quadruple.2
+            let rawJSON = quadruple.3
+            let rawLabels = ScreenshotRecord.decodeLabels(rawJSON)
+
+            var clusterID: String?
+            var clusterMemberIDs: [ScreenshotMemoryID] = []
+            var clusterMembers: [VisualClusterMemberDebug] = []
+            var clusterCohesion: Double?
+            var clusterWeakestMemberSupport: Double?
+            var clusterWeakestPairSupport: Double?
+            var clusterSupportedEdgeCount: Int?
+            var clusterFlags: [String] = []
+            var signalBreakdown: [String: Double] = [:]
+            var singletonReason: String?
+            var rejectedCandidates: [VisualRejectedCandidateDebug] = []
+            var inputPeerCount = 0
+            var collectionTitles: [String] = []
+            var neighbors: [VisualNeighbor] = []
+
+            if includeNeighbors, let seed = members.first(where: { $0.id == memory.id }) {
+                let cluster = MultiSignalClusterer.cluster(around: seed, candidates: members, maxSize: 8)
+                clusterID = cluster.clusterID
+                clusterMemberIDs = cluster.memberIDs
+                clusterCohesion = cluster.meanCohesion
+                clusterWeakestMemberSupport = cluster.weakestMemberSupport
+                clusterWeakestPairSupport = cluster.weakestPairSupport
+                clusterSupportedEdgeCount = cluster.supportedEdgeCount
+                clusterFlags = cluster.flags
+                signalBreakdown = cluster.signalBreakdown
+                singletonReason = cluster.singletonReason
+                inputPeerCount = cluster.inputPeerCount
+                collectionTitles = cluster.profileTitlesConsidered.isEmpty
+                    ? matchingProfileTitles(for: memory, titles: profileTitles)
+                    : cluster.profileTitlesConsidered
+                let supportByID = Dictionary(
+                    uniqueKeysWithValues: cluster.memberSupport.map { ($0.id, $0) }
+                )
+                let auditByID = Dictionary(
+                    uniqueKeysWithValues: cluster.admittedMemberAudits.map { ($0.id, $0) }
+                )
+                clusterMembers = cluster.memberIDs.map { id in
+                    let support = supportByID[id]
+                    let audit = auditByID[id]
+                    return VisualClusterMemberDebug(
+                        id: id,
+                        photosLocalIdentifier: localIDByScreenshot[id] ?? nil,
+                        support: support?.support,
+                        topSignals: support?.topSignals ?? [:],
+                        strongFacets: support?.strongFacets ?? [],
+                        pruned: support?.pruned ?? false,
+                        pruneReason: support?.pruneReason,
+                        admissionTotalScore: audit?.totalScore,
+                        admissionSignalParts: audit?.signalParts ?? [:],
+                        admissionHasContextualSupport: audit?.hasContextualSupport,
+                        admissionContextualFamilies: audit?.contextualFamilies ?? [],
+                        admissionReason: audit?.admissionReason,
+                        bridgeInvolved: audit?.bridgeInvolved ?? false,
+                        outlierValidationPassed: audit?.outlierValidationPassed,
+                        correlatedSemanticChannels: audit?.correlatedSemanticChannels ?? []
+                    )
+                }
+                // Surface pruned outliers in DEBUG even if not in final memberIDs
+                for pruned in cluster.memberSupport where pruned.pruned {
+                    if !clusterMembers.contains(where: { $0.id == pruned.id }) {
+                        let audit = auditByID[pruned.id]
+                        clusterMembers.append(
+                            VisualClusterMemberDebug(
+                                id: pruned.id,
+                                photosLocalIdentifier: localIDByScreenshot[pruned.id] ?? nil,
+                                support: pruned.support,
+                                topSignals: pruned.topSignals,
+                                strongFacets: pruned.strongFacets,
+                                pruned: true,
+                                pruneReason: pruned.pruneReason,
+                                admissionTotalScore: audit?.totalScore,
+                                admissionSignalParts: audit?.signalParts ?? [:],
+                                admissionHasContextualSupport: audit?.hasContextualSupport,
+                                admissionContextualFamilies: audit?.contextualFamilies ?? [],
+                                admissionReason: audit?.admissionReason,
+                                bridgeInvolved: audit?.bridgeInvolved ?? false,
+                                outlierValidationPassed: false,
+                                correlatedSemanticChannels: audit?.correlatedSemanticChannels ?? []
+                            )
+                        )
+                    }
+                }
+                rejectedCandidates = cluster.rejectedCandidates.map { rejected in
+                    VisualRejectedCandidateDebug(
+                        id: rejected.id,
+                        photosLocalIdentifier: localIDByScreenshot[rejected.id] ?? nil,
+                        totalScore: rejected.totalScore,
+                        hasContextualSupport: rejected.hasContextualSupport,
+                        contextualFamilies: rejected.contextualFamilies,
+                        signalParts: rejected.signalParts,
+                        rejectionReason: rejected.rejectionReason,
+                        sourcePlatform: rejected.sourcePlatform,
+                        contentType: rejected.contentType,
+                        contentFamily: rejected.contentFamily,
+                        correlatedSemanticChannels: rejected.correlatedSemanticChannels
+                    )
+                }
+
+                if let printData {
+                    neighbors = neighborPool
+                        .filter { $0.0 != memory.id }
+                        .compactMap { otherID, otherLocalID, otherPrint -> VisualNeighbor? in
+                            guard let distance = VisionVisualAnalysisService.distance(between: printData, and: otherPrint)
+                            else { return nil }
+                            return VisualNeighbor(
+                                screenshotID: otherID,
+                                photosLocalIdentifier: otherLocalID,
+                                distance: distance,
+                                similarity: VisionVisualAnalysisService.similarity(distance: distance),
+                                band: VisualAnalysisPipeline.neighborBand(distance: distance)
+                            )
+                        }
+                        .sorted { $0.distance < $1.distance }
+                        .prefix(8)
+                        .map { $0 }
+                }
+            }
+
+            let ocrTrimmed = memory.ocrText?.trimmingCharacters(in: .whitespacesAndNewlines) ?? ""
+            // Sparse-OCR DEBUG flag — not a semantic Level 2 facet. Stale `image_only` facet ids ignored.
+            let imageOnly = ocrTrimmed.count < 12
+            let evidence: [FacetEvidence] = {
+                if !memory.visualFacetEvidence.isEmpty {
+                    return memory.visualFacetEvidence
+                }
+                // Pre-8.2A rows: re-derive for DEBUG without mutating DB.
+                return ScreenshotFacetDeriver.evaluate(
+                    ocrText: memory.ocrText,
+                    labels: memory.visualLabelObservations
+                )
+            }()
+            let sourceEvidence = ScreenshotSourceDeriver.derive(
+                ocrText: memory.ocrText,
+                labels: memory.visualLabelObservations,
+                strongFacets: memory.visualFacets,
+                facetEvidence: evidence
+            )
+            func fieldDebug(_ field: SourceEvidenceField) -> VisualSourceFieldDebug {
+                VisualSourceFieldDebug(
+                    value: field.value,
+                    confidence: field.confidence,
+                    evidence: field.evidence,
+                    trace: field.trace
+                )
+            }
+
+            snapshots.append(
+                VisualAnalysisDebugSnapshot(
+                    id: memory.id,
+                    createdAt: memory.createdAt,
+                    updatedAt: updatedAt,
+                    photosLocalIdentifier: memory.photosLocalIdentifier,
+                    previewSymbol: memory.previewSymbol,
+                    ocrText: memory.ocrText,
+                    ocrStatus: memory.ocrStatus,
+                    visualStatus: memory.visualStatus,
+                    visualVersion: memory.visualVersion,
+                    visualAttemptCount: memory.visualAttemptCount,
+                    visualLastError: memory.visualLastError,
+                    labels: memory.visualLabelObservations,
+                    rawLabels: rawLabels,
+                    droppedLabels: [],
+                    facets: memory.visualFacets,
+                    facetEvidence: evidence,
+                    featurePrintPresent: printData != nil,
+                    featurePrintVersion: memory.featurePrintVersion,
+                    featurePrintStatus: memory.featurePrintStatus,
+                    clusterID: clusterID,
+                    clusterMemberIDs: clusterMemberIDs,
+                    clusterMembers: clusterMembers,
+                    clusterCohesion: clusterCohesion,
+                    clusterWeakestMemberSupport: clusterWeakestMemberSupport,
+                    clusterWeakestPairSupport: clusterWeakestPairSupport,
+                    clusterSupportedEdgeCount: clusterSupportedEdgeCount,
+                    clusterFlags: clusterFlags,
+                    clusterSignalBreakdown: signalBreakdown,
+                    clusterSingletonReason: singletonReason,
+                    clusterRejectedCandidates: rejectedCandidates,
+                    clusterInputPeerCount: inputPeerCount,
+                    sourcePlatform: sourceEvidence.sourcePlatform,
+                    contentType: sourceEvidence.contentType,
+                    contentFamily: sourceEvidence.contentFamily,
+                    sourceEvidenceConfidence: sourceEvidence.confidence,
+                    sourcePlatformField: fieldDebug(sourceEvidence.platform),
+                    contentTypeField: fieldDebug(sourceEvidence.type),
+                    contentFamilyField: fieldDebug(sourceEvidence.family),
+                    surfaceField: fieldDebug(sourceEvidence.surface),
+                    embeddedHints: sourceEvidence.embeddedHints.map {
+                        VisualEmbeddedHintDebug(
+                            value: $0.value,
+                            kind: $0.kind,
+                            confidence: $0.confidence,
+                            evidence: $0.evidence
+                        )
+                    },
+                    collectionProfileTitles: collectionTitles,
+                    neighbors: neighbors,
+                    isImageOnlyEvidence: imageOnly,
+                    analysisInputNote: VisualAnalysisPipeline.analysisInputLongEdgeNote
+                )
+            )
+        }
+        return snapshots
+    }
+
+    private static func clusterMember(
+        memory: ScreenshotMemory,
+        printData: Data?,
+        profileTitles: [String],
+        profileMatch: Double,
+        matchingTitles: [String]
+    ) -> MultiSignalClusterer.Member {
+        _ = profileTitles
+        return MultiSignalClusterer.Member.withDerivedSource(
+            id: memory.id,
+            createdAt: memory.createdAt,
+            ocrNormalized: OrganizationOCRNormalizer.normalize(memory.ocrText),
+            visualLabels: memory.visualLabels,
+            facets: memory.visualFacets,
+            featurePrintData: printData,
+            profileMatchScore: profileMatch,
+            profileTitles: matchingTitles,
+            rawOCR: memory.ocrText
+        )
+    }
+
+    private func profileMatchScore(for memory: ScreenshotMemory, titles: [String]) -> Double {
+        let ocr = OrganizationOCRNormalizer.normalize(memory.ocrText).lowercased()
+        guard !ocr.isEmpty else { return 0 }
+        var best = 0.0
+        for title in titles {
+            let tokens = title.lowercased()
+                .split(whereSeparator: { !$0.isLetter && !$0.isNumber })
+                .map(String.init)
+                .filter { $0.count >= 3 }
+            guard !tokens.isEmpty else { continue }
+            let hits = tokens.filter { ocr.contains($0) }.count
+            best = max(best, Double(hits) / Double(tokens.count))
+        }
+        return best
+    }
+
+    private func matchingProfileTitles(for memory: ScreenshotMemory, titles: [String]) -> [String] {
+        let ocr = OrganizationOCRNormalizer.normalize(memory.ocrText).lowercased()
+        let labels = Set(memory.visualLabels)
+        return titles.filter { title in
+            let t = title.lowercased()
+            if !ocr.isEmpty, t.split(separator: " ").contains(where: { ocr.contains($0) && $0.count >= 3 }) {
+                return true
+            }
+            // Soft visual assist — never invent titles from labels alone.
+            if t.contains("japan"), labels.contains(where: { ["airplane", "airport", "city", "building", "landmark"].contains($0) }) {
+                return true
+            }
+            if t.contains("apartment"), labels.contains(where: { ["sofa", "furniture", "chair", "table"].contains($0) }) {
+                return true
+            }
+            return false
         }
     }
 }

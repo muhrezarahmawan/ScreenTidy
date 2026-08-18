@@ -54,6 +54,7 @@ export const SharedContextSchema = z.object({
   title: nonEmptyString,
   confidence,
   memberLocalIds: z.array(nonEmptyString).min(1),
+  evidence: z.array(z.string()).default([]),
 });
 
 export const BatchMemberResultSchema = UnderstandingContentSchema.extend({
@@ -63,6 +64,7 @@ export const BatchMemberResultSchema = UnderstandingContentSchema.extend({
 export const BatchUnderstandingContentSchema = z.object({
   members: z.array(BatchMemberResultSchema).min(1),
   sharedContext: SharedContextSchema.nullable(),
+  unresolvedIds: z.array(z.string()).default([]),
 });
 
 export const BatchUnderstandingResponseSchema = BatchUnderstandingContentSchema.extend({
@@ -88,6 +90,11 @@ export const BatchMemberRequestSchema = z.object({
   createdAt: z.string().optional(),
   imageBase64: z.string().optional(),
   imageMimeType: z.string().optional(),
+  /** Optional compact Level 2A facets — evidence only, never Collection titles. */
+  visualFacets: z.array(z.string()).optional(),
+  sourcePlatform: z.string().optional(),
+  contentType: z.string().optional(),
+  contentFamily: z.string().optional(),
 });
 
 export const UnderstandBatchRequestSchema = z.object({
@@ -173,7 +180,7 @@ export const OPENAI_SINGLE_JSON_SCHEMA = {
 export const OPENAI_BATCH_JSON_SCHEMA = {
   type: "object",
   additionalProperties: false,
-  required: ["members", "sharedContext"],
+  required: ["members", "sharedContext", "unresolvedIds"],
   properties: {
     members: {
       type: "array",
@@ -249,15 +256,107 @@ export const OPENAI_BATCH_JSON_SCHEMA = {
         {
           type: "object",
           additionalProperties: false,
-          required: ["title", "confidence", "memberLocalIds"],
+          required: ["title", "confidence", "memberLocalIds", "evidence"],
           properties: {
             title: { type: "string" },
             confidence: { type: "number" },
             memberLocalIds: { type: "array", items: { type: "string" } },
+            evidence: { type: "array", items: { type: "string" } },
           },
         },
         { type: "null" },
       ],
     },
+    unresolvedIds: { type: "array", items: { type: "string" } },
+  },
+} as const;
+
+// --- Sprint 8.3A content understanding (no Collection fields) ---
+
+const labeledIdConfidence = z.object({
+  id: nonEmptyString,
+  confidence,
+});
+
+export const EmbeddedHintSchema = z.object({
+  id: nonEmptyString,
+  kind: z.enum(["notification", "widget", "other"]),
+  confidence,
+});
+
+export const ContentUnderstandingContentSchema = z.object({
+  surface: labeledIdConfidence,
+  platform: labeledIdConfidence,
+  contentType: labeledIdConfidence,
+  contentFamily: labeledIdConfidence,
+  embeddedHints: z.array(EmbeddedHintSchema),
+  openDescriptors: z.array(z.string().max(80)).max(12),
+  evidenceNotes: z.array(z.string().max(200)).max(8),
+  disagreesWithLocal: z.boolean(),
+});
+
+export const ContentUnderstandingResponseSchema = ContentUnderstandingContentSchema.extend({
+  provider: nonEmptyString,
+  promptVersion: nonEmptyString,
+  schemaVersion: nonEmptyString,
+});
+
+export const ContentUnderstandRequestSchema = z.object({
+  correlationId: nonEmptyString,
+  schemaVersion: z.string().optional(),
+  createdAt: z.string().optional(),
+  imageBase64: nonEmptyString,
+  imageMimeType: z.string().optional(),
+  localEvidence: z.record(z.unknown()).default({}),
+});
+
+export type ContentUnderstandRequest = z.infer<typeof ContentUnderstandRequestSchema>;
+export type ContentUnderstandingResponse = z.infer<typeof ContentUnderstandingResponseSchema>;
+export type ContentUnderstandingContent = z.infer<typeof ContentUnderstandingContentSchema>;
+
+const labeledIdConfidenceOpenAI = {
+  type: "object",
+  additionalProperties: false,
+  required: ["id", "confidence"],
+  properties: {
+    id: { type: "string" },
+    confidence: { type: "number" },
+  },
+} as const;
+
+export const OPENAI_CONTENT_JSON_SCHEMA = {
+  type: "object",
+  additionalProperties: false,
+  required: [
+    "surface",
+    "platform",
+    "contentType",
+    "contentFamily",
+    "embeddedHints",
+    "openDescriptors",
+    "evidenceNotes",
+    "disagreesWithLocal",
+  ],
+  properties: {
+    surface: labeledIdConfidenceOpenAI,
+    platform: labeledIdConfidenceOpenAI,
+    contentType: labeledIdConfidenceOpenAI,
+    contentFamily: labeledIdConfidenceOpenAI,
+    embeddedHints: {
+      type: "array",
+      items: {
+        type: "object",
+        additionalProperties: false,
+        required: ["id", "kind", "confidence"],
+        properties: {
+          id: { type: "string" },
+          kind: { type: "string", enum: ["notification", "widget", "other"] },
+          confidence: { type: "number" },
+        },
+      },
+    },
+    openDescriptors: { type: "array", items: { type: "string" } },
+    evidenceNotes: { type: "array", items: { type: "string" } },
+    disagreesWithLocal: { type: "boolean" },
   },
 } as const;

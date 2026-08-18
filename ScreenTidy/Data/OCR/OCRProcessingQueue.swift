@@ -119,6 +119,9 @@ final class OCRProcessingQueue: OCRScheduling, @unchecked Sendable {
     private func errorCode(_ error: OCRJobError) -> String {
         switch error {
         case .imageUnavailable: return "image_unavailable"
+        case .photokitTimeout: return VisualAnalysisErrorCode.photokitTimeout
+        case .photokitMissingAsset: return VisualAnalysisErrorCode.photokitMissingAsset
+        case .photokitNoCGImage: return VisualAnalysisErrorCode.photokitNoCGImage
         case .visionFailed: return "vision_failed"
         }
     }

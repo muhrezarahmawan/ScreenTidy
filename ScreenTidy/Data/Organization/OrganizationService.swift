@@ -78,25 +78,99 @@ actor OrganizationService: Organizing {
             }
         let titles = contexts.map(\.title)
 
-        // Local batch context (inspectable via batchMemberIDs on input / DEBUG).
+        // Local multi-signal batch context (P2).
         let pendingPeers = try await store.fetchPendingOrganizeMembers(limit: 40)
-        let seed = OrganizationBatchPlanner.Member(
-            id: screenshotID,
-            createdAt: shot.createdAt,
-            ocrNormalized: OrganizationOCRNormalizer.normalize(shot.ocrText)
-        )
-        let peerMembers = pendingPeers.map {
-            OrganizationBatchPlanner.Member(
-                id: $0.id,
-                createdAt: $0.createdAt,
-                ocrNormalized: OrganizationOCRNormalizer.normalize($0.ocrText)
+        let eligibleTitles = contexts.map(\.title)
+        func clusterMember(from snap: OrganizationClusterMemberSnapshot) -> MultiSignalClusterer.Member {
+            let ocr = OrganizationOCRNormalizer.normalize(snap.ocrText)
+            let profileTitles = eligibleTitles.filter { title in
+                let t = title.lowercased()
+                let o = ocr.lowercased()
+                return t.split(separator: " ").contains(where: { o.contains($0) && $0.count >= 3 })
+            }
+            return MultiSignalClusterer.Member.withDerivedSource(
+                id: snap.id,
+                createdAt: snap.createdAt,
+                ocrNormalized: ocr,
+                visualLabels: snap.visualLabels,
+                facets: snap.visualFacets,
+                featurePrintData: snap.featurePrintData,
+                profileMatchScore: profileTitles.isEmpty ? 0 : 0.7,
+                profileTitles: profileTitles,
+                rawOCR: snap.ocrText
             )
         }
-        let batchIDs = OrganizationBatchPlanner.cluster(
-            around: seed,
+        let seed = clusterMember(
+            from: OrganizationClusterMemberSnapshot(
+                id: screenshotID,
+                createdAt: shot.createdAt,
+                ocrText: shot.ocrText,
+                visualLabels: shot.visualLabels,
+                visualFacets: shot.visualFacets,
+                featurePrintData: try? await store.fetchFeaturePrintData(id: screenshotID),
+                photosLocalIdentifier: shot.photosLocalIdentifier
+            )
+        )
+        // Prefer print from peer snapshots when seed print missing above.
+        var seedWithPrint = seed
+        if seedWithPrint.featurePrintData == nil,
+           let peer = pendingPeers.first(where: { $0.id == screenshotID }) {
+            seedWithPrint.featurePrintData = peer.featurePrintData
+            seedWithPrint.visualLabels = peer.visualLabels
+            seedWithPrint.facets = peer.visualFacets
+            let refreshed = ScreenshotSourceDeriver.derive(
+                ocrText: shot.ocrText,
+                labels: [],
+                strongFacets: peer.visualFacets
+            )
+            seedWithPrint.sourcePlatform = refreshed.sourcePlatform
+            seedWithPrint.contentType = refreshed.contentType
+            seedWithPrint.contentFamily = refreshed.contentFamily
+        }
+        let peerMembers = pendingPeers.map(clusterMember(from:))
+        let cluster = OrganizationBatchPlanner.clusterDetailed(
+            around: seedWithPrint,
             candidates: peerMembers,
             maxSize: policy.maxBatchSize
         )
+        let batchIDs = cluster.memberIDs
+
+        // Build multimodal batch payloads from local candidate group (ceiling 8).
+        var batchMembers: [UnderstandingBatchMemberPayload] = []
+        batchMembers.reserveCapacity(batchIDs.count)
+        for memberID in batchIDs {
+            let memoryShot: ScreenshotMemory?
+            if memberID == screenshotID {
+                memoryShot = shot
+            } else {
+                memoryShot = try? await memory.fetchScreenshot(id: memberID)
+            }
+            let peerSnap = pendingPeers.first(where: { $0.id == memberID })
+            let ocr = memoryShot?.ocrText ?? peerSnap?.ocrText
+            let facets = memoryShot?.visualFacets ?? peerSnap?.visualFacets ?? []
+            let source = ScreenshotSourceDeriver.derive(
+                ocrText: ocr,
+                labels: [],
+                strongFacets: facets
+            )
+            batchMembers.append(
+                UnderstandingBatchMemberPayload(
+                    localID: memberID.rawValue.uuidString,
+                    ocrText: ocr,
+                    createdAt: memoryShot?.createdAt ?? peerSnap?.createdAt,
+                    photosLocalIdentifier: memoryShot?.photosLocalIdentifier
+                        ?? peerSnap?.photosLocalIdentifier,
+                    imageJPEGData: nil,
+                    visualFacets: facets,
+                    sourcePlatform: source.sourcePlatform == ScreenshotSourceEvidence.unknown
+                        ? nil : source.sourcePlatform,
+                    contentType: source.contentType == ScreenshotSourceEvidence.unknown
+                        ? nil : source.contentType,
+                    contentFamily: source.contentFamily == ScreenshotSourceEvidence.unknown
+                        ? nil : source.contentFamily
+                )
+            )
+        }
 
         let input = UnderstandingInput(
             screenshotID: screenshotID,
@@ -107,13 +181,20 @@ actor OrganizationService: Organizing {
             eligibleCollectionContexts: contexts,
             allowMultimodal: allowMultimodal,
             batchMemberIDs: batchIDs,
-            imageJPEGData: nil
+            batchMembers: batchMembers,
+            imageJPEGData: nil,
+            visualLabels: shot.visualLabelObservations,
+            visualFacets: shot.visualFacets
         )
 
+        let batchSignature = batchIDs.count > 1
+            ? batchIDs.map(\.rawValue.uuidString).sorted().joined(separator: ",")
+            : nil
         let fingerprint = Self.fingerprint(
             ocr: OrganizationOCRNormalizer.normalize(shot.ocrText),
             createdAt: shot.createdAt,
-            resolverVersion: policy.resolverVersion
+            resolverVersion: policy.resolverVersion,
+            batchSignature: batchSignature
         )
 
         if let cached = try await store.fetchCachedUnderstanding(fingerprint: fingerprint) {
@@ -130,7 +211,7 @@ actor OrganizationService: Organizing {
                 batchSize: batchIDs.count,
                 createdAt: shot.createdAt,
                 fingerprint: fingerprint,
-                batchID: batchIDs.count > 1 ? batchIDs.map(\.rawValue.uuidString).sorted().joined(separator: ",") : nil
+                batchID: batchSignature
             )
             return
         }
@@ -139,6 +220,7 @@ actor OrganizationService: Organizing {
         do {
             understandingResult = try await understanding.understand(input)
         } catch UnderstandingError.pendingNetwork {
+            // Bounded retry path — keep pendingNetwork (OrganizationQueue backoff).
             let category = OrganizationPipelineDebugStore.trace(for: screenshotID)?.failureCategory
             let code = category?.rawValue ?? "pending_network"
             try await store.setOrganizeStatus(.pendingNetwork, id: screenshotID, errorCode: code)
@@ -153,23 +235,20 @@ actor OrganizationService: Organizing {
             )
             return
         } catch {
+            // Ordinary cloud-intelligence failures → Needs Review (never stuck in `failed`).
             let category = OrganizationPipelineDebugStore.trace(for: screenshotID)?.failureCategory
             let code = category?.rawValue ?? "understand_failed"
             OrganizationPipelineDebugStore.update(
                 screenshotID: screenshotID,
                 stage: .failed,
-                detail: "Understanding failed",
+                detail: "Understanding failed → Needs Review fallback",
                 failureCategory: category ?? .malformedResponse
             )
-            try await store.setOrganizeStatus(.failed, id: screenshotID, errorCode: code)
-            try await store.recordOrganizationRun(
+            try await applyCloudFailureNeedsReview(
                 screenshotID: screenshotID,
-                status: .failure,
-                decision: nil,
-                understanding: nil,
-                policy: policy,
                 errorCode: code,
-                fingerprint: fingerprint
+                fingerprint: fingerprint,
+                batchID: batchSignature
             )
             return
         }
@@ -185,8 +264,68 @@ actor OrganizationService: Organizing {
             batchSize: batchIDs.count,
             createdAt: shot.createdAt,
             fingerprint: fingerprint,
-            batchID: batchIDs.count > 1 ? batchIDs.map(\.rawValue.uuidString).sorted().joined(separator: ",") : nil
+            batchID: batchSignature
         )
+    }
+
+    /// Cloud/schema/malformed failures must leave the screenshot usable in Needs Review.
+    private func applyCloudFailureNeedsReview(
+        screenshotID: ScreenshotMemoryID,
+        errorCode: String,
+        fingerprint: String,
+        batchID: String?
+    ) async throws {
+        let understanding = ScreenshotUnderstanding(
+            summary: nil,
+            typeFacets: [],
+            entities: [],
+            locations: [],
+            dates: [],
+            visualDescriptors: [],
+            candidateCollections: [],
+            proposedNewCollection: nil,
+            reasonSignals: ["cloud_intelligence_failed", errorCode],
+            provider: "gateway-failed",
+            sharedContext: nil,
+            normalizedOCRPreview: nil
+        )
+        var decision = ResolverDecision(
+            kind: .needsReview,
+            collectionID: nil,
+            title: nil,
+            emoji: nil,
+            confidence: nil,
+            applicableThreshold: policy.assignThreshold,
+            reason: "Cloud intelligence failed (\(errorCode)) — Needs Review",
+            candidates: [],
+            confidenceComponents: nil
+        )
+        decision.batchID = batchID
+
+        try await store.applyResolverDecision(
+            screenshotID: screenshotID,
+            decision: decision,
+            understanding: understanding,
+            policy: policy,
+            fingerprint: fingerprint
+        )
+        try await store.recordOrganizationRun(
+            screenshotID: screenshotID,
+            status: .success,
+            decision: decision,
+            understanding: understanding,
+            policy: policy,
+            errorCode: errorCode,
+            fingerprint: fingerprint
+        )
+        OrganizationPipelineDebugStore.update(
+            screenshotID: screenshotID,
+            stage: .completed,
+            detail: "Persisted needsReview after cloud failure",
+            decisionKind: ResolverDecisionKind.needsReview.rawValue,
+            provider: understanding.provider
+        )
+        onMutated()
     }
 
     private func apply(
@@ -244,8 +383,14 @@ actor OrganizationService: Organizing {
         onMutated()
     }
 
-    private static func fingerprint(ocr: String, createdAt: Date?, resolverVersion: Int) -> String {
+    private static func fingerprint(
+        ocr: String,
+        createdAt: Date?,
+        resolverVersion: Int,
+        batchSignature: String?
+    ) -> String {
         let datePart = createdAt.map { String(Int($0.timeIntervalSince1970)) } ?? ""
-        return "v\(resolverVersion):\(ocr.count):\(ocr.hashValue):\(datePart)"
+        let batchPart = batchSignature.map { ":\($0.hashValue)" } ?? ""
+        return "v\(resolverVersion):\(ocr.count):\(ocr.hashValue):\(datePart)\(batchPart)"
     }
 }

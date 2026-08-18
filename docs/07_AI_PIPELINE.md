@@ -3,14 +3,21 @@
 ## Goals
 - Organize by **context and intent** into Context Collections (assistant-like).  
 - Emit **Type Facets** and **Entities** for search, cleanup, and internal classification (not shown on Screenshot Viewer).  
-- Preserve trust: **reuse before create**, Unassigned when unsure.  
+- Preserve trust: **reuse before create**, Unassigned / Needs Review when unsure.  
 - Privacy: ephemeral cloud; durable memory metadata stays on device.
 
 **Production intelligence target (APPROVED):** Architecture **C** — Hybrid Multi-Signal Contextual Intelligence  
 → `reviews/intelligence-architecture-multisignal-proposal.md`  
 
-Phases: **P0** hosted HTTPS multimodal → **P1** Vision evidence → **P2** clustering → **P3** local text embeddings → **P4** cluster multimodal → **P5** resolver scoring → **P6** eval.  
+**Dynamic Collection Invariant (LOCKED):** `docs/26_SPRINT_8_PHASED_INTELLIGENCE.md` § Dynamic Collection Invariant  
+— **No predefined Collection taxonomy.** Names are dynamically inferred. Doc/example titles are illustrative only (not seeds, fallbacks, few-shot targets, or exact benchmark strings).
+
+**Execution order (LOCKED 2026-08-10):** Sprint **8.0→8.8** in `docs/26_SPRINT_8_PHASED_INTELLIGENCE.md`.  
+Embeddings are **8.7 conditional** (not before Intelligence Lab). Railway/hosting **paused**.  
+**Sprint 8.0 + 8.1 CLOSED / ACCEPTED** (2026-08-10). Active: **8.2A Multi-Signal Content Typing** *(plan detailed — code after APPROVAL)*. 8.2B after 8.2A ACCEPT.  
 Vision labels / facets **never** become Collection names. Resolver thresholds **0.70 / 0.85 + corroboration** unchanged.
+
+Historical Architecture C labels P0–P6 remain useful vocabulary; **do not** implement P3 embeddings before Sprint 8.3–8.5.
 
 ---
 
@@ -21,17 +28,15 @@ Vision labels / facets **never** become Collection names. Resolver thresholds **
 2. Upsert Screenshot row
 3. UI thumbnail + perceptual hash
 4. OCR (Vision) → FTS
-5. Organization request (always-on core; prefer on-device; network only with required disclosure)
-     payload: OCR + small thumb + minimal metadata
-              + compact existing context title list (for reuse)
-     transport (P0+): HTTPS ScreenTidy gateway (Railway) — not Mac LAN
-6. On-device Collection Resolver
-7. Persist contexts, facets, entities, keywords, expiry signals
-8. Update Home promotion / Unassigned / Cleanup hints
-9. Progressive UI
+5. Visual analysis (classify Rev2 + feature print) — Sprint 8.0/8.1
+6. Multi-signal candidate grouping — Sprint 8.2
+7. Selective multimodal context proposal (Lab 8.3→ production 8.6)
+8. On-device Collection Resolver
+9. Persist contexts, facets, entities, keywords, expiry signals
+10. Progressive UI
 ```
 
-**Target evolution (Architecture C):** local Vision classify + feature prints + embeddings + multi-signal clusters → selective multimodal **context** proposals → local resolver. Sprint 8 stays open until organization quality is accepted.
+**Target:** local OCR + Vision + multi-signal clusters → selective multimodal **context** proposals → local resolver. Sprint 8 stays open until organization quality is accepted.
 
 ---
 
@@ -61,6 +66,8 @@ Full-resolution originals · library dumps · durable server storage
 ---
 
 ## Model Output Contract
+
+*(JSON below is a **shape** example. Titles such as “Japan Trip” are hypothetical illustrations — not a closed vocabulary, taxonomy seed, or exact expected string.)*
 
 ```json
 {
@@ -93,10 +100,12 @@ Full-resolution originals · library dumps · durable server storage
 ```
 
 **Notes**
-- Model may suggest context titles freely **within assistant discipline** (meaningful, stable, non-spammy).  
-- Model should prefer `attach_to_title_hint` matching an existing title when appropriate.  
-- Model does **not** emit `unassigned` — the client applies Unassigned.  
-- Type facet keys must be from the allow-list.  
+- Model may suggest context titles freely **within assistant discipline** (meaningful, stable, non-spammy) — **open-ended namespace**, grounded in evidence.  
+- Model should prefer `attach_to_title_hint` matching an **existing user Collection profile** when context matches (reuse-before-create).  
+- Do **not** bias prompts with a fixed few-shot list of “approved” Collection names.  
+- Model does **not** emit `unassigned` — the client applies Unassigned / Needs Review.  
+- Type facet keys must be from the allow-list (internal evidence — **not** Collection titles).  
+- Future evaluation judges naming usefulness / equivalence — **not** exact string equality to this example.  
 
 ---
 
@@ -130,11 +139,12 @@ Tune thresholds in TestFlight; store in settings if needed.
 Stateless · TLS · server-side provider keys · no durable image/OCR/response storage · App Attest + rate limits · payload size caps · timeouts · swappable LLM vendor  
 
 Prompt policy:
-- Optimize for **meaningful personal contexts**, not type folders as titles  
-- Reuse existing titles when provided  
+- Optimize for **meaningful personal contexts**, dynamically named from evidence — not type folders as titles  
+- Reuse existing Collection **profiles** when context matches; do not constrain CREATE to a predefined name list  
 - Avoid PII-heavy summaries beyond search usefulness  
 - Resist prompt injection from OCR text  
 - Structured JSON only  
+- Do not use illustrative doc titles as few-shot forced answers  
 
 ---
 

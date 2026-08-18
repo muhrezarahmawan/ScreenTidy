@@ -345,56 +345,48 @@ Make Context Collections a real, user-steerable memory graph **without** cloud A
 
 **Status:** **CLOSED / ACCEPTED** (2026-08-08). Physical-device verification **PASSED**. Recorded in `reviews/sprint-07-review.md` and `reviews/sprint-07-completion-report.md`.
 
-## Sprint 8 — Collection Resolver / Automatic Organization
+## Sprint 8 — Automatic Organization / Contextual Intelligence
 
 ### Goal
-Deliver ScreenTidy’s core automatic organization promise: understand screenshots and file them into meaningful Collections when confident — with Needs Review as the **uncertainty fallback**, not the default dump.
+Deliver ScreenTidy’s core USP: understand screenshots and file them into meaningful **personal context** Collections when confident — with Needs Review as the uncertainty fallback.
 
-**Canonical plan (docs only until approved):** `docs/24_SPRINT_8_COLLECTION_RESOLVER.md`
+**Canonical phased plan:** `docs/26_SPRINT_8_PHASED_INTELLIGENCE.md` (Sprint **8.0–8.8**)  
+**Dynamic Collection Invariant (LOCKED):** no predefined Collection taxonomy — see `docs/26_…` § Dynamic Collection Invariant  
+**Resolver rules / thresholds:** `docs/24_SPRINT_8_COLLECTION_RESOLVER.md`  
+**Code audit:** `reviews/sprint-08-phased-audit.md`  
+**8.0 completion:** `reviews/sprint-08-0-completion-report.md`  
+**8.1 completion:** `reviews/sprint-08-1-completion-report.md`  
+**8.2A completion:** `reviews/sprint-08-2a-completion-report.md`  
+**8.2 plan:** `reviews/sprint-08-2-plan.md`  
+**8.2B plan:** `reviews/sprint-08-2b-plan.md`
 
-### Intended outcome
+### Active phase
+**Sprint 8.2B — Context Candidate Grouping** — 📋 **PLAN ONLY** (`reviews/sprint-08-2b-plan.md`). Do **not** write 8.2B code until that plan is explicitly approved.  
+**Sprint 8.2A — Local high-confidence structured content typing:** **CLOSED / ACCEPTED** (2026-08-10). Visually semantic types deferred to **8.3A multimodal**.  
+**Sprint 8.1 — Visual Understanding:** **CLOSED / ACCEPTED** (2026-08-10).  
+**Sprint 8.0 — Intelligence Foundation Health:** **CLOSED / ACCEPTED** (2026-08-10).
+
+### Intended outcome (end of Sprint 8)
 ```
-New screenshot → understand → Collection (reuse / create) OR Needs Review
+New screenshot → local evidence → candidate group → multimodal context proposal
+  → local Collection Resolver → reuse / create / Needs Review
 ```
-Backlog in Needs Review is processed safely; user authority (`source = user`) is never casually overridden.
+Collection names are **dynamically inferred** (open-ended). Doc examples are illustrative only — not taxonomy seeds or exact benchmark strings.
 
-### Deliverables (plan — not yet implemented)
-- Signal model (OCR + visual + metadata + existing Collections)  
-- Recommended intelligence architecture (hybrid ephemeral + on-device resolver)  
-- Collection Resolver decision flow + confidence thresholds  
-- Reuse-before-create + naming discipline  
-- Provenance (`source = ai` / locked user memberships)  
-- Backlog + incremental pipelines  
-- GRDB migrations for resolver state  
-- DEBUG Resolver Inspector  
-- Physical-device acceptance checklist  
+### Status
+**NOT ACCEPTED** (overall). Phases **8.0** + **8.1** + **8.2A CLOSED**. Remaining work is phased. Sprint 9 **not started**. Railway **paused**. Embeddings deferred to **8.7 conditional**.
 
-### Dependencies
-- Sprint 4–7 (**CLOSED / ACCEPTED**)
-- Explicit product approval of architecture / privacy / confidence before coding
+### Definition of Done (Sprint 8 overall)
+- [x] Phase **8.0** accepted (queue foundation health on device)
+- [x] Phase **8.1** accepted (Vision Level 1 evidence quality on device)
+- [x] Phase **8.2A** accepted (narrowed local structured content typing on device)
+- [ ] Phases 8.2B→8.6 accepted in order (8.7 only if needed; 8.8 after quality)
+- [ ] Physical-device organization quality passes Benchmark v1 targets (**naming judged by usefulness / equivalence — not exact string match to illustrative titles**)
+- [ ] `source=user` preserved; thresholds 0.70 / 0.85 + corroboration unchanged
+- [ ] Vision nouns never become Collection titles
+- [ ] Dynamic Collection Invariant honored (no predefined taxonomy / seed names)
 
-### Risks
-- Over-filing (wrong Collections destroy trust)  
-- Duplicate Collection titles  
-- Cloud cost / privacy disclosure  
-- Churn / thrashing after auto-file  
-- Image-only screenshots with weak signals  
-
-### Estimated complexity
-**XL** (5–8 days) after plan approval
-
-### Definition of Done
-- [ ] Plan approved (architecture, privacy, confidence, resolver rules)  
-- [ ] With network + disclosure path, confident shots leave Needs Review into meaningful Collections  
-- [ ] Reuse-before-create demonstrable  
-- [ ] Ambiguous / weak / image-only → Needs Review (not forced file)  
-- [ ] `source = user` memberships respected; corrections stick  
-- [ ] Backlog processing + incremental new-shot pipeline  
-- [ ] DEBUG inspector explains assign / create / NR decisions  
-- [ ] Physical-device acceptance **PASSED**  
-- [ ] Phase C/D still not required for Sprint 8 DoD  
-
-**Status:** Engineering complete — awaiting physical-device acceptance. See `reviews/sprint-08-completion-report.md`.
+**Status:** **OPEN / NOT ACCEPTED** — active phase = **8.2B** (plan only; awaiting APPROVAL to code).
 
 ## Sprint 9 — Cleanup
 
@@ -409,7 +401,7 @@ Ship reversible cleanup suggestions that reinforce trust.
 - Cleanup tab + Home teaser wired to real suggestions  
 
 ### Dependencies
-- Sprint 4 (thumbs/hash), 7–8 (facets/dates). pHash can be computed from Sprint 4 onward.
+- Sprint 4 (thumbs/hash), 7–8 (facets/dates). **Blocked until Sprint 8 accepted.**
 
 ### Risks
 - Aggressive duplicate false positives  

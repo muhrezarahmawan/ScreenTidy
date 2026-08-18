@@ -32,7 +32,8 @@ protocol OrganizationPersisting: Sendable {
 
     func fetchOrganizeStatus(id: ScreenshotMemoryID) async throws -> OrganizeStatus?
     func fetchOrganizeResolverVersion(id: ScreenshotMemoryID) async throws -> Int?
-    func fetchPendingOrganizeMembers(limit: Int) async throws -> [(id: ScreenshotMemoryID, createdAt: Date?, ocrText: String?)]
+    func fetchPendingOrganizeMembers(limit: Int) async throws -> [OrganizationClusterMemberSnapshot]
+    func fetchFeaturePrintData(id: ScreenshotMemoryID) async throws -> Data?
     func cacheUnderstanding(fingerprint: String, understanding: ScreenshotUnderstanding) async throws
     func fetchCachedUnderstanding(fingerprint: String) async throws -> ScreenshotUnderstanding?
     func refreshCollectionProfile(for collectionID: ContextCollectionID?, createdTitle: String?) async throws

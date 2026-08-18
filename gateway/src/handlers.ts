@@ -1,6 +1,7 @@
 import type { Request, Response } from "express";
 import type OpenAI from "openai";
 import type { AppConfig } from "./config.js";
+import { CONTENT_SCHEMA_VERSION, buildContentUserPrompt } from "./contentPrompt.js";
 import {
   assertImageWithinBounds,
   decodeBase64Image,
@@ -9,9 +10,15 @@ import {
   toDataUrl,
 } from "./image.js";
 import { logRequest } from "./logger.js";
-import { GatewayError, understandBatch, understandSingle } from "./openaiClient.js";
+import {
+  GatewayError,
+  contentUnderstandSingle,
+  understandBatch,
+  understandSingle,
+} from "./openaiClient.js";
 import { buildBatchUserPrompt, buildSingleUserPrompt } from "./prompt.js";
 import {
+  ContentUnderstandRequestSchema,
   UnderstandBatchRequestSchema,
   UnderstandRequestSchema,
 } from "./schemas.js";
@@ -21,6 +28,7 @@ export function healthHandler(config: AppConfig) {
     res.json({
       ok: true,
       schemaVersion: config.schemaVersion,
+      contentSchemaVersion: CONTENT_SCHEMA_VERSION,
       modelConfigured: Boolean(config.openaiApiKey),
     });
   };
@@ -157,6 +165,10 @@ export function understandBatchHandler(config: AppConfig, client: OpenAI | null)
           ocrNormalized: m.ocrNormalized,
           createdAt: m.createdAt,
           hasImage: Boolean(prepared.dataUrl),
+          visualFacets: m.visualFacets,
+          sourcePlatform: m.sourcePlatform,
+          contentType: m.contentType,
+          contentFamily: m.contentFamily,
         };
       });
 
@@ -190,6 +202,85 @@ export function understandBatchHandler(config: AppConfig, client: OpenAI | null)
     } finally {
       logRequest({
         route: "/v1/understand-batch",
+        correlationId,
+        status,
+        latencyMs: Date.now() - started,
+        model: config.openaiModel,
+        errorCode,
+      });
+    }
+  };
+}
+
+export function contentUnderstandHandler(config: AppConfig, client: OpenAI | null) {
+  return async (req: Request, res: Response): Promise<void> => {
+    const started = Date.now();
+    let correlationId = "unknown";
+    let status = 500;
+    let errorCode: string | undefined;
+
+    try {
+      correlationId = peekCorrelationId(req.body);
+
+      const parsed = ContentUnderstandRequestSchema.safeParse(req.body);
+      if (!parsed.success) {
+        throw new GatewayError(400, "REQUEST_INVALID", "Invalid content-understand request body");
+      }
+      const body = parsed.data;
+      correlationId = body.correlationId;
+      ensureClient(client, config);
+
+      if (body.schemaVersion && body.schemaVersion !== CONTENT_SCHEMA_VERSION) {
+        throw new GatewayError(
+          422,
+          "SCHEMA_VERSION_MISMATCH",
+          `Expected schemaVersion ${CONTENT_SCHEMA_VERSION}`
+        );
+      }
+
+      // Image is required and authoritative for 8.3A Lab.
+      let dataUrl: string;
+      try {
+        const buffer = decodeBase64Image(body.imageBase64);
+        const probe = probeImage(buffer, body.imageMimeType);
+        assertImageWithinBounds(probe, config.imageLongEdgeMax);
+        dataUrl = toDataUrl(probe.mimeType, buffer);
+      } catch (err) {
+        if (err instanceof ImageValidationError) {
+          throw new GatewayError(422, err.code, err.message);
+        }
+        throw err;
+      }
+
+      const userText = buildContentUserPrompt({
+        createdAt: body.createdAt,
+        localEvidence: body.localEvidence,
+        hasImage: true,
+      });
+
+      const result = await contentUnderstandSingle({
+        client: client!,
+        config,
+        userText,
+        imageDataUrl: dataUrl,
+      });
+
+      status = 200;
+      res.json(result);
+    } catch (err) {
+      const mapped = mapError(err);
+      status = mapped.status;
+      errorCode = mapped.code;
+      res.status(mapped.status).json({
+        error: {
+          code: mapped.code,
+          message: mapped.message,
+          correlationId,
+        },
+      });
+    } finally {
+      logRequest({
+        route: "/v1/content-understand",
         correlationId,
         status,
         latencyMs: Date.now() - started,

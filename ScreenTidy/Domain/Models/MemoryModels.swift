@@ -44,6 +44,21 @@ enum ScreenshotOCRStatus: String, Codable, Sendable {
     case inaccessible
 }
 
+/// Vision classification + feature-print pipeline state (P1).
+enum ScreenshotVisualStatus: String, Codable, Sendable {
+    case pending
+    case processing
+    case completed
+    case failed
+    case inaccessible
+}
+
+/// Filtered Apple Vision classification — evidence only, never a Collection title.
+struct VisualLabelObservation: Codable, Sendable, Equatable, Hashable {
+    var identifier: String
+    var confidence: Float
+}
+
 /// PhotoKit metadata kept locally; never contains image bytes.
 struct PhotoAssetMetadata: Hashable, Sendable {
     let localIdentifier: String
@@ -64,8 +79,15 @@ struct ScreenshotMemory: Identifiable, Hashable, Sendable {
     var entityLabels: [String]
     /// Placeholder asset name or color token for mocks/previews.
     var previewSymbol: String
-    /// Internal visual labels (objects/scenes) — Sprint 2 mock search; not shown in UI.
+    /// Identifier-only visual labels for search / lightweight consumers.
     var visualLabels: [String] = []
+    /// Filtered Vision classifications with confidence (P1).
+    var visualLabelObservations: [VisualLabelObservation] = []
+    /// Internal facets (boarding_pass, map, …) — never Collection titles.
+    /// Strong Level 2 identifiers for consumers / clustering (Sprint 8.2A).
+    var visualFacets: [String] = []
+    /// Full Level 2 facet evidence (strong + weak) for DEBUG / provenance.
+    var visualFacetEvidence: [FacetEvidence] = []
     /// Internal semantic / organization keywords — Sprint 2 mock search; not shown in UI.
     var semanticKeywords: [String] = []
     /// Stable Photos identity when this record originated in PhotoKit.
@@ -77,6 +99,15 @@ struct ScreenshotMemory: Identifiable, Hashable, Sendable {
     var ocrAttemptCount: Int = 0
     var ocrLastAttemptAt: Date? = nil
     var ocrLastError: String? = nil
+    var visualStatus: ScreenshotVisualStatus = .completed
+    var visualVersion: Int = 0
+    var visualAttemptCount: Int = 0
+    var visualLastAttemptAt: Date? = nil
+    var visualLastError: String? = nil
+    var featurePrintStatus: String = "missing"
+    var featurePrintVersion: Int = 0
+    var candidateClusterID: String? = nil
+    var candidateClusterCohesion: Double? = nil
 }
 
 /// Primary Home unit — living context (not a type folder).

@@ -25,6 +25,8 @@ final class AppDependencies {
     let searchSuggestions: any SearchSuggestionsProviding
     let ocrScheduler: any OCRScheduling
     let ocrStore: any OCRPersisting
+    let visualScheduler: any VisualAnalysisScheduling
+    let visualStore: any VisualAnalysisPersisting
     let organizationStore: any OrganizationPersisting
     let organizationScheduler: any OrganizationScheduling
     let feedback: STFeedbackCenter
@@ -87,6 +89,7 @@ final class AppDependencies {
         self.mockPhotos = mockPhotos
         self.photosProvider = photoProvider
         self.ocrStore = memory
+        self.visualStore = memory
         self.organizationStore = memory
 
         let epochBump = OrganizationEpochBump()
@@ -105,6 +108,7 @@ final class AppDependencies {
             self.thumbnailProvider = MockThumbnailProvider()
             self.searchSuggestions = LocalSearchSuggestionsProvider(memory: memory)
             self.ocrScheduler = NoOpOCRScheduler()
+            self.visualScheduler = NoOpVisualAnalysisScheduler()
             self.organizationScheduler = NoOpOrganizationScheduler()
         } else {
             let orgQueue = OrganizationQueue(
@@ -115,13 +119,26 @@ final class AppDependencies {
             self.organizationScheduler = orgQueue
 
             let photoSync = PhotoKitScreenshotSyncService(repository: memory, photos: photoProvider)
+            let imageLoader = PhotoKitOCRImageLoader(longEdge: OCRPipeline.imageLongEdge)
+            let visualImageLoader = PhotoKitOCRImageLoader(longEdge: VisualAnalysisPipeline.imageLongEdge)
+            let visualQueue = VisualAnalysisProcessingQueue(
+                repository: memory,
+                analyzer: VisionVisualAnalysisService(),
+                images: visualImageLoader,
+                onVisualFinished: { [weak orgQueue] id in
+                    Task {
+                        try? await memory.tryMarkReadyForOrganize(id: id)
+                        orgQueue?.kick()
+                    }
+                }
+            )
             let ocrQueue = OCRProcessingQueue(
                 repository: memory,
                 ocr: VisionOCRService(),
-                images: PhotoKitOCRImageLoader(),
+                images: imageLoader,
                 onOCRFinished: { [weak orgQueue] id in
                     Task {
-                        try? await memory.markPendingOrganize(id: id)
+                        try? await memory.tryMarkReadyForOrganize(id: id)
                         orgQueue?.kick()
                     }
                 }
@@ -130,9 +147,11 @@ final class AppDependencies {
             self.thumbnailProvider = PhotoKitThumbnailProvider()
             self.searchSuggestions = LocalSearchSuggestionsProvider(memory: memory)
             self.ocrScheduler = ocrQueue
+            self.visualScheduler = visualQueue
             photoSync.onDidSync = { [weak self] in
                 self?.noteMemoryMutation()
                 self?.ocrScheduler.kick()
+                self?.visualScheduler.kick()
                 self?.organizationScheduler.kick()
             }
         }
@@ -165,6 +184,7 @@ final class AppDependencies {
         self.mockPhotos = photos
         self.photosProvider = photos
         self.ocrStore = memory
+        self.visualStore = memory
         self.organizationStore = memory
         self.organizer = OrganizationService(
             store: memory,
@@ -175,6 +195,7 @@ final class AppDependencies {
         self.thumbnailProvider = MockThumbnailProvider()
         self.searchSuggestions = LocalSearchSuggestionsProvider(memory: memory)
         self.ocrScheduler = NoOpOCRScheduler()
+        self.visualScheduler = NoOpVisualAnalysisScheduler()
         self.organizationScheduler = NoOpOrganizationScheduler()
     }
 
@@ -310,6 +331,7 @@ final class AppDependencies {
         hasCompletedOnboarding = true
         AppLog.general.info("Onboarding completed")
         ocrScheduler.kick()
+        visualScheduler.kick()
         organizationScheduler.kick()
         presentCloudUnderstandingDisclosureIfNeeded()
     }
@@ -321,6 +343,7 @@ final class AppDependencies {
             _ = try? await screenshotSync.syncIncremental()
             noteMemoryMutation()
             ocrScheduler.kick()
+            visualScheduler.kick()
             organizationScheduler.kick()
             presentCloudUnderstandingDisclosureIfNeeded()
         }

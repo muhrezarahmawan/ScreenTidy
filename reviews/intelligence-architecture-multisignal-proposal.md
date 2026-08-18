@@ -1,16 +1,37 @@
 # ScreenTidy Intelligence Architecture — Multi-Signal Contextual Organization
 
 **Status:** **APPROVED** (2026-08-09) — Architecture **C** locked as production target  
-**Sprint 8:** remains **IMPLEMENTED BUT NOT ACCEPTED**  
+**Sprint 8:** remains **NOT ACCEPTED** (phase **8.0 CLOSED / ACCEPTED** 2026-08-10)  
 **Sprint 8 product gate:** materially useful automatic organization on real device screenshots — **not** infrastructure-only  
 **Sprint 9:** **NOT STARTED** (blocked until Sprint 8 organization quality is accepted)  
-**Implementation:** Incremental phases **P0→P6**; measure after each phase; do not skip ahead to P1 until P0 device smoke passes  
+**Execution sequencing (2026-08-10):** Use Sprint **8.0–8.8** in `docs/26_SPRINT_8_PHASED_INTELLIGENCE.md`. Embeddings move to **8.7 conditional** (not before Intelligence Lab). Railway paused. Active phase: **8.1**. Product rules in this doc still apply.  
+**Implementation:** One Sprint 8.x phase at a time; explicit ACCEPT before next phase.  
+**8.0 report:** `reviews/sprint-08-0-completion-report.md`  
 
 **Related:**  
 - `reviews/vision-visual-signals-research-proposal.md` (Vision evidence layer — approved within C)  
 - `docs/24_SPRINT_8_COLLECTION_RESOLVER.md`  
 - `docs/07_AI_PIPELINE.md`, `docs/08_PRIVACY_SECURITY.md`  
-- `docs/25_RAILWAY_GATEWAY.md` (P0 hosted multimodal transport)
+- `docs/25_RAILWAY_GATEWAY.md` (P0 hosted multimodal transport)  
+- `docs/26_SPRINT_8_PHASED_INTELLIGENCE.md` (**Dynamic Collection Invariant** — LOCKED)
+
+---
+
+## Dynamic Collection Invariant (LOCKED)
+
+ScreenTidy has **no predefined Collection taxonomy**. Collection identity and names are **dynamically inferred** from shared screenshot context. The namespace is **open-ended**.
+
+Names used below (e.g. “Japan Trip”, “Apartment Setup”) are **hypothetical illustrations only**. They must not become hardcoded categories, taxonomy seeds, fallbacks, clustering labels, few-shot answer biases, or exact expected benchmark strings.
+
+**Intelligence flow:** local evidence → belong-together grouping → infer shared real-world context → compare to existing Collection **profiles** → **REUSE** or **CREATE** (dynamically named) → local resolver decides.
+
+**Reuse-before-create** = “Does this match a context the user already has?” — **not** “Which predefined category is this?”
+
+**Evidence ≠ Collection:** Vision labels / facets / entities answer *what is visible / what type*; contextual intelligence answers *what these shots mean together*; naming answers *what to call the Collection* — grounded, not from a fixed list.
+
+**Evaluation:** do not require exact Collection-name string equality. Judge grouping, context, reuse/create, grounding, specificity, usefulness, hallucination avoidance. Insufficient evidence → Needs Review (never invent a generic Collection for coverage).
+
+Canonical write-up: `docs/26_SPRINT_8_PHASED_INTELLIGENCE.md` § Dynamic Collection Invariant.
 
 ---
 
@@ -59,7 +80,7 @@ Stop treating each screenshot as an isolated OCR→classify→Needs Review probl
 | Option | Verdict |
 |--------|---------|
 | **A** — OCR + per-shot multimodal + resolver (current Sprint 8 shape) | Necessary transport/path, **insufficient product intelligence** alone |
-| **B** — Apple-local only (OCR + classify + feature prints) | Strong offline floor; **cannot** name “Japan Trip” from nouns alone |
+| **B** — Apple-local only (OCR + classify + feature prints) | Strong offline floor; **cannot** invent personal context titles from Vision nouns alone |
 | **C** — OCR + Vision + similarity + embeddings + selective multimodal + resolver | **APPROVED production target** |
 
 **Thresholds stay locked:** assign ≥ **0.70**, create ≥ **0.85** + corroboration. Improve evidence quality, do not lower bars.
@@ -121,9 +142,9 @@ LOCAL Collection Resolver (sole authority)
 | Text | Vision OCR | Search substrate (raw) + org-normalized text | Be the only understanding signal |
 | Visual labels | `VNClassifyImageRequest` Rev2 (iOS 17) | Object/scene **evidence** | Become Collection names |
 | Visual similarity | `VNGenerateImageFeaturePrintRequest` Rev2 | Local **near-duplicate / visual neighbor** signal | Define membership alone |
-| Type facets | Heuristic / multimodal / later Core ML | Internal `boarding_pass`, `hotel_booking`, … | Auto-create “Boarding Passes” folders |
+| Type facets | Heuristic / multimodal / later Core ML | Internal type evidence (e.g. boarding_pass) | Auto-create type-named Collections (“Boarding Passes”) |
 | Semantic similarity | Embeddings (text ± image) | Relate boarding pass ↔ hotel ↔ map ↔ landmark photo | Replace resolver |
-| Deep context | Multimodal AI via ScreenTidy gateway | Propose **Japan Trip**-level context + candidates | Mutate GRDB / Collections |
+| Deep context | Multimodal AI via ScreenTidy gateway | Propose high-level personal **context** + candidates (dynamic titles) | Mutate GRDB / Collections; emit fixed taxonomy names |
 | Storage | SQLite / GRDB | System of record + compact vectors | Cloud vector DB |
 | Authority | Collection Resolver | reuse / create / NR | Be bypassed by cloud |
 | User | Sprint 7 locks | Absolute override | Be casually overwritten |
@@ -156,7 +177,7 @@ LOCAL Collection Resolver (sole authority)
 | Feature print | ✓ never upload raw print unless proven necessary | Prefer **not** uploading prints |
 | Embeddings | Prefer ✓ | Only if local quality insufficient; then ephemeral + cache |
 | Type facets | ✓ / refine via multimodal | ✓ |
-| Context title (“Japan Trip”) | Weak offline | ✓ primary strength |
+| Context title (dynamic, illustrative) | Weak offline | ✓ primary strength |
 | Collection mutation | ✓ only | ✗ never |
 | Full library / full-res | ✗ | ✗ |
 
@@ -181,8 +202,8 @@ Relate **boarding pass + hotel + map + reservation + landmark photo** even when 
 ### Recommended strategy
 
 1. **Phase 1:** Local **text embeddings** on org-normalized OCR (empty OCR → skip text vector; rely on Vision print + labels).  
-2. Keep **feature prints** as the visual similarity channel (do not pretend prints are semantic “Japan Trip” embeddings).  
-3. **Evaluate** on device: if text-only local embeddings + prints fail the Japan-trip style set, add **gateway text embeddings** (OCR snippet only, consented, cached by hash).  
+2. Keep **feature prints** as the visual similarity channel (do not pretend prints are semantic personal-context embeddings).  
+3. **Evaluate** on device: if text-only local embeddings + prints fail a real multi-context travel-style set, add **gateway text embeddings** (OCR snippet only, consented, cached by hash).  
 4. Defer **image/multimodal embeddings** until measured need.  
 5. **Never** re-embed the whole library on launch; version `embedding_version`; incremental for new/changed content only.
 
@@ -200,7 +221,7 @@ Reaffirm and extend `reviews/vision-visual-signals-research-proposal.md`:
 | `VNGenerateImageFeaturePrintRequest` **Revision 2** | ✓ | Blob + version | Distance for visual neighbors |
 | Modern Swift `ClassifyImageRequest` | iOS 18+ optional later | Same | Same taxonomy |
 
-**Hard rule:** `furniture` + `sofa` → evidence for **Apartment Setup**, never Collection **Furniture**. Expand denylist with Vision nouns.
+**Hard rule:** Vision nouns (e.g. `furniture` + `sofa`) are **evidence only** for later contextual inference — never Collection titles like **Furniture**. Expand denylist with Vision nouns.
 
 **Screenshot caveat:** classifier is photo/scene-oriented; UI/memes noisy — keep filters aggressive; OCR still dominates text-heavy shots.
 
@@ -219,7 +240,7 @@ Replace “independent shot + weak time/OCR batch” with **multi-signal candida
 | Feature-print distance | Medium–high when OCR weak | Visual series / landmark photos |
 | Vision label Jaccard | Low–medium | Shared travel/furniture themes |
 | Temporal proximity | Medium | 2h / 12h / 48h / trip windows |
-| Collection profile match | High | Pull toward existing Japan Trip |
+| Collection profile match | High | Pull toward an **existing** user Collection profile when context matches |
 | Type-facet compatibility | Medium | boarding_pass + hotel_booking cohere; chat + receipt weaker |
 
 ### Rules
@@ -230,17 +251,18 @@ Replace “independent shot + weak time/OCR batch” with **multi-signal candida
 - Conflicting facets (e.g. strong “receipt” vs “boarding_pass”) reduce cluster cohesion / confidence.  
 - Image-only members join via print + labels + time + profile, not automatic NR.
 
-### Japan Trip example (target)
+### Illustrative multi-signal cluster (hypothetical — not a taxonomy seed)
 
 | Shot | Local signals |
 |------|----------------|
 | A boarding DOH→NRT | type=boarding_pass; entities DOH,NRT |
-| B Park Hyatt Tokyo | type=hotel_booking; Tokyo |
-| C Maps Tokyo | type=map; Tokyo |
-| D restaurant reservation | type=reservation; Tokyo |
-| E Tokyo Tower, no OCR | Vision landmark/city/travel; print near other travel imagery |
+| B hotel booking (Tokyo) | type=hotel_booking; city entity |
+| C Maps (same city) | type=map; city entity |
+| D restaurant reservation | type=reservation; city entity |
+| E landmark photo, no OCR | Vision scene/travel labels; print near other travel imagery |
 
-→ Multi-signal cluster A–E → multimodal proposes **Japan Trip** → resolver CREATE/REUSE (not five object folders).
+→ Multi-signal cluster A–E → multimodal proposes a **dynamically inferred** personal-context title grounded in evidence → resolver CREATE/REUSE (not five object folders).  
+The specific string chosen in any example is illustrative; semantically equivalent names are equally valid.
 
 ---
 
@@ -248,11 +270,12 @@ Replace “independent shot + weak time/OCR batch” with **multi-signal candida
 
 | Source | Naming role |
 |--------|-------------|
-| Multimodal structured `contextTitle` | Primary proposer when online |
-| Existing profile title / alias (≥ similarity / entity match) | **Reuse wins** |
+| Multimodal structured context title | Primary proposer when online — **open vocabulary**, grounded in evidence |
+| Existing profile title / alias (≥ similarity / entity / embedding match) | **Reuse wins** |
 | Local offline | Only high-corroboration, specific multi-token titles; else NR |
 | Vision identifiers / type facets | **Never** titles |
 | User titles | Immutable authority (Sprint 7) |
+| Doc / prompt / test example titles | **Illustrative only** — never taxonomy seeds or few-shot forced answers |
 
 **Reuse before create** compares **context**, not string equality alone:
 
@@ -260,9 +283,12 @@ Replace “independent shot + weak time/OCR batch” with **multi-signal candida
 - embedding proximity to profile centroid (when available)  
 - date range overlap  
 - alias / title similarity ≥ 0.90 (existing)  
-→ Prefer **Japan Trip** over minting **Tokyo Vacation**.
+→ Prefer **REUSE** of an existing matching profile over minting a near-duplicate title for the same context.
 
-Create still requires ≥ **0.85** + corroboration (batch / strong entities / agreement) and denylist checks.
+Create still requires ≥ **0.85** + corroboration (batch / strong entities / agreement) and denylist checks.  
+Insufficient evidence → **Needs Review** — do not invent a generic Collection for coverage.
+
+**Evaluation:** naming quality = grounding / specificity / usefulness / semantic equivalence — **not** exact match to any illustrative string.
 
 ---
 
@@ -422,7 +448,7 @@ Use existing Resolver Inspector eval labels + aggregate metrics.
 
 ### B — Apple-local only
 - **Pros:** Private, offline, free, fast visual evidence.  
-- **Cons:** Labels ≠ contexts; cannot reliably produce “Japan Trip”; risk of category folders if misused.  
+- **Cons:** Labels ≠ contexts; cannot reliably invent personal context titles from nouns alone; risk of category folders if misused.  
 - **Role:** **mandatory local substrate**.
 
 ### C — Hybrid (recommended)

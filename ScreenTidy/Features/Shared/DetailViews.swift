@@ -1,4 +1,24 @@
 import SwiftUI
+import UIKit
+
+/// Fit-to-screen PhotoKit target for `ScreenshotDetailView` hero images.
+/// Uses display × scale (not Visual Eval’s 1200 cap). Caps long edge at 2400px to bound memory
+/// without requesting original/full-resolution assets. No pinch-zoom ladder required today.
+enum ScreenshotFullscreenImageTarget {
+    static let maxLongEdgePixels: CGFloat = 2_400
+
+    static func targetSize(fittedPoints: CGSize, scale: CGFloat = UIScreen.main.scale) -> CGSize {
+        var width = max(1, fittedPoints.width * scale)
+        var height = max(1, fittedPoints.height * scale)
+        let longEdge = max(width, height)
+        if longEdge > maxLongEdgePixels {
+            let factor = maxLongEdgePixels / longEdge
+            width *= factor
+            height *= factor
+        }
+        return CGSize(width: width.rounded(), height: height.rounded())
+    }
+}
 
 /// Context Collection Detail — configurable gallery density + lightweight management.
 struct ContextDetailView: View {
@@ -651,12 +671,10 @@ struct ScreenshotDetailView: View {
     private func heroImage(for shot: ScreenshotMemory, fitted: CGSize) -> some View {
         let image = PhotosThumbnailImage(
             localIdentifier: shot.photosLocalIdentifier,
-            targetSize: CGSize(
-                width: fitted.width * UIScreen.main.scale,
-                height: fitted.height * UIScreen.main.scale
-            ),
+            targetSize: ScreenshotFullscreenImageTarget.targetSize(fittedPoints: fitted),
             contentMode: .aspectFit,
-            allowsNetworkAccess: true
+            allowsNetworkAccess: true,
+            deliveryStyle: .progressive
         ) {
             ScreenshotPreview(
                 kind: MockShotKindResolver.kind(for: shot),

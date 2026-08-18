@@ -22,13 +22,84 @@ struct ResolverPolicy: Sendable, Equatable {
         maxBatchSize: 8
     )
 
-    static let genericTitleDenylist: Set<String> = [
-        "travel", "shopping", "work", "receipts", "receipt", "chats", "chat",
-        "social", "misc", "other", "screenshots", "screenshot", "photos", "general",
-        "image", "website", "miscellaneous", "hotels", "hotel", "maps", "map",
-        "restaurants", "restaurant", "boarding pass", "furniture", "chair", "sofa",
-        "information", "document", "documents"
+    static let genericTitleDenylist: Set<String> = {
+        var set: Set<String> = [
+            "travel", "shopping", "work", "receipts", "receipt", "chats", "chat",
+            "social", "misc", "other", "screenshots", "screenshot", "photos", "general",
+            "image", "website", "miscellaneous", "hotels", "hotel", "maps", "map",
+            "restaurants", "restaurant", "boarding pass", "furniture", "chair", "sofa",
+            "information", "document", "documents", "airplanes", "airplane", "airports",
+            "airport", "cars", "car", "food", "cats", "cat", "dogs", "dog", "vehicles",
+            "vehicle", "buildings", "building", "landmarks", "landmark", "city", "cities"
+        ]
+        set.formUnion(VisionEvidencePolicy.nounDenylist)
+        return set
+    }()
+}
+
+/// Vision evidence policy — labels/facets never become Collection titles.
+enum VisionEvidencePolicy {
+    static let nounDenylist: Set<String> = [
+        "indoor", "outdoor", "person", "people", "human", "man", "woman",
+        "screenshot", "text", "font", "electronics", "computer", "laptop",
+        "monitor", "screen", "display", "smartphone", "mobile_phone", "phone",
+        "pattern", "abstract", "design", "art", "drawing", "illustration",
+        "room", "floor", "wall", "ceiling", "window", "door",
+        "sky", "cloud", "clouds", "nature", "plant", "tree", "grass",
+        "animal", "mammal", "object", "thing", "scene", "landscape",
+        "photo", "photograph", "image", "picture",
+        "airplane", "aeroplane", "aircraft", "airport", "vehicle", "car", "truck", "bus",
+        "train", "boat", "ship", "bicycle", "motorcycle",
+        "building", "skyscraper", "bridge", "tower", "landmark", "city", "town", "street",
+        "furniture", "sofa", "couch", "chair", "table", "bed", "desk", "cabinet",
+        "food", "meal", "dish", "fruit", "vegetable", "drink", "beverage",
+        "document", "paper", "book", "magazine", "newspaper",
+        "cat", "dog", "bird", "pet", "flower", "beach", "mountain", "ocean", "sea",
+        "hotel", "restaurant", "shop", "store", "market", "office", "kitchen", "bathroom",
+        "travel", "vacation", "trip", "holiday"
     ]
+}
+
+/// Snapshot used by multi-signal clustering during organize.
+struct OrganizationClusterMemberSnapshot: Sendable, Equatable {
+    var id: ScreenshotMemoryID
+    var createdAt: Date?
+    var ocrText: String?
+    var visualLabels: [String]
+    var visualFacets: [String]
+    var featurePrintData: Data?
+    var photosLocalIdentifier: String?
+}
+
+/// Compact peer payload for multimodal batch understand (5–8 members).
+struct UnderstandingBatchMemberPayload: Sendable, Equatable {
+    var localID: String
+    var ocrText: String?
+    var createdAt: Date?
+    var photosLocalIdentifier: String?
+    var imageJPEGData: Data?
+    var visualFacets: [String]
+    var sourcePlatform: String?
+    var contentType: String?
+    var contentFamily: String?
+}
+
+struct UnderstandingInput: Sendable {
+    var screenshotID: ScreenshotMemoryID
+    var ocrText: String?
+    var createdAt: Date?
+    var photosLocalIdentifier: String?
+    var eligibleCollectionTitles: [String]
+    var eligibleCollectionContexts: [EligibleCollectionContext]
+    var allowMultimodal: Bool
+    var batchMemberIDs: [ScreenshotMemoryID]
+    /// When count > 1, production uses POST /v1/understand-batch.
+    var batchMembers: [UnderstandingBatchMemberPayload] = []
+    var imageJPEGData: Data?
+    /// Cached on-device Vision labels (P1) — evidence only.
+    var visualLabels: [VisualLabelObservation] = []
+    /// Internal facets (P1/P2) — never Collection titles.
+    var visualFacets: [String] = []
 }
 
 // MARK: - Multimodal image policy (tunable)
@@ -74,6 +145,41 @@ struct SharedBatchContext: Sendable, Equatable, Codable {
     var title: String
     var confidence: Double
     var memberLocalIDs: [String]
+    var evidence: [String]
+
+    enum CodingKeys: String, CodingKey {
+        case title, confidence
+        case memberLocalIDs = "memberLocalIds"
+        case evidence
+    }
+
+    init(
+        title: String,
+        confidence: Double,
+        memberLocalIDs: [String],
+        evidence: [String] = []
+    ) {
+        self.title = title
+        self.confidence = confidence
+        self.memberLocalIDs = memberLocalIDs
+        self.evidence = evidence
+    }
+
+    init(from decoder: Decoder) throws {
+        let c = try decoder.container(keyedBy: CodingKeys.self)
+        title = try c.decode(String.self, forKey: .title)
+        confidence = try c.decode(Double.self, forKey: .confidence)
+        memberLocalIDs = try c.decode([String].self, forKey: .memberLocalIDs)
+        evidence = try c.decodeIfPresent([String].self, forKey: .evidence) ?? []
+    }
+
+    func encode(to encoder: Encoder) throws {
+        var c = encoder.container(keyedBy: CodingKeys.self)
+        try c.encode(title, forKey: .title)
+        try c.encode(confidence, forKey: .confidence)
+        try c.encode(memberLocalIDs, forKey: .memberLocalIDs)
+        try c.encode(evidence, forKey: .evidence)
+    }
 }
 
 struct ScreenshotUnderstanding: Sendable, Equatable, Codable {
@@ -148,18 +254,6 @@ struct ScreenshotUnderstanding: Sendable, Equatable, Codable {
         sharedContext = try c.decodeIfPresent(SharedBatchContext.self, forKey: .sharedContext)
         normalizedOCRPreview = try c.decodeIfPresent(String.self, forKey: .normalizedOCRPreview)
     }
-}
-
-struct UnderstandingInput: Sendable {
-    var screenshotID: ScreenshotMemoryID
-    var ocrText: String?
-    var createdAt: Date?
-    var photosLocalIdentifier: String?
-    var eligibleCollectionTitles: [String]
-    var eligibleCollectionContexts: [EligibleCollectionContext]
-    var allowMultimodal: Bool
-    var batchMemberIDs: [ScreenshotMemoryID]
-    var imageJPEGData: Data?
 }
 
 enum UnderstandingError: Error, Sendable {

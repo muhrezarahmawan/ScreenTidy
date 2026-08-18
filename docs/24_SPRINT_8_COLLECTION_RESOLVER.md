@@ -1,17 +1,43 @@
 # Sprint 8 — Collection Resolver / Automatic Organization
 
-**Status:** **IMPLEMENTED BUT NOT ACCEPTED** (2026-08-09) — automatic organization milestone remains open  
-**Physical-device:** Hosted HTTPS gateway (**P0**) required; LAN Mac gateway is not the acceptance path  
-**Product gate:** Materially useful auto-organization on real screenshots (Architecture **C** phases as needed) — **not** “gateway works” alone  
+**Status:** **NOT ACCEPTED** (restructured 2026-08-10 into Sprint **8.0–8.8**)  
+**Active phase:** **8.2B — Context Candidate Grouping** (📋 PLAN ONLY; 8.0 + 8.1 + **8.2A CLOSED**)  
+**Canonical phased roadmap:** `docs/26_SPRINT_8_PHASED_INTELLIGENCE.md`  
+**8.2A completion:** `reviews/sprint-08-2a-completion-report.md`  
+**8.2B plan:** `reviews/sprint-08-2b-plan.md`  
+**Code audit:** `reviews/sprint-08-phased-audit.md`  
+**8.0 completion:** `reviews/sprint-08-0-completion-report.md`  
+**Physical-device:** Local OCR + Visual queues **proven** on iPhone; Railway/hosting remains **paused**  
+**Product gate:** Materially useful auto-organization into **personal context** Collections — not infrastructure alone  
 **Depends on:** Sprint 4–7 — all **CLOSED / ACCEPTED**  
 **Canonical roadmap:** `docs/13_IMPLEMENTATION_ROADMAP.md` § Sprint 8  
-**Related:** `docs/07_AI_PIPELINE.md`, `docs/06_DATA_MODEL.md`, `docs/08_PRIVACY_SECURITY.md`, `docs/25_RAILWAY_GATEWAY.md`  
-**Intelligence architecture (APPROVED):** `reviews/intelligence-architecture-multisignal-proposal.md`
+**Related:** `docs/07_AI_PIPELINE.md`, `docs/06_DATA_MODEL.md`, `docs/08_PRIVACY_SECURITY.md`, `docs/25_RAILWAY_GATEWAY.md` (paused)  
+**Intelligence architecture (APPROVED rules):** `reviews/intelligence-architecture-multisignal-proposal.md`  
+**Dynamic Collection Invariant (LOCKED):** `docs/26_SPRINT_8_PHASED_INTELLIGENCE.md` § Dynamic Collection Invariant  
+**Sequencing note:** Architecture C P0→P6 order is **superseded for execution** by Sprint 8.0–8.8 (embeddings → 8.7 conditional; Lab before production multimodal integration).
 
-**Completion report:** `reviews/sprint-08-completion-report.md`  
-**Accuracy plan:** `reviews/sprint-08-accuracy-improvement-plan.md` (**APPROVED**)  
-**Gateway:** `gateway/README.md`  
+**Historical “Sprint 8 done” report:** `reviews/sprint-08-completion-report.md` — superseded; Sprint 8 remains open.  
 **Sprint 9 must NOT start until Sprint 8 is accepted.**
+
+---
+
+## Dynamic Collection Invariant (LOCKED)
+
+ScreenTidy has **no predefined Collection taxonomy**. Collection names are **dynamically inferred** from shared screenshot context. The Collection namespace is **open-ended**.
+
+Any Collection titles in this document (checklists, JSON sketches, examples) are **hypothetical illustrations only**. They must not become:
+
+- hardcoded / canonical categories  
+- taxonomy seeds or fallbacks  
+- clustering labels  
+- few-shot biases  
+- exact expected benchmark strings  
+
+**Reuse-before-create** compares inferred context to **existing Collection profiles** the user already has — not “which predefined category does this belong to?”
+
+Vision labels / type facets / entities = **evidence**. Contextual intelligence = **what shots mean together**. Dynamic naming = **grounded open vocabulary**. Insufficient evidence → **Needs Review** (never invent a generic Collection for coverage).
+
+Future naming evaluation must judge grounding / specificity / usefulness / semantic equivalence — **not** exact string equality to illustrative titles.
 
 ---
 
@@ -196,17 +222,17 @@ ResolverPolicy.resolverVersion = N
   "entities": [{ "type": "city", "value": "Tokyo", "confidence": 0.86 }],
   "visualDescriptors": ["hotel confirmation UI"],
   "candidateCollections": [
-    { "title": "Japan Trip", "confidence": 0.82, "reasonSignals": ["tokyo", "hotel"] }
+    { "title": "<dynamically inferred or existing profile title>", "confidence": 0.82, "reasonSignals": ["tokyo", "hotel"] }
   ],
   "proposedNewCollection": {
-    "title": "Visa Application",
-    "emoji": "🛂",
+    "title": "<dynamically inferred context name>",
+    "emoji": "…",
     "confidence": 0.89
   }
 }
 ```
 
-Exact Swift types may vary; validation + bounds required.
+Titles in examples are **illustrative placeholders**, not a closed vocabulary. Exact Swift types may vary; validation + bounds required.
 
 ---
 
@@ -232,15 +258,17 @@ DEBUG metrics if practical: processed / reused / created / NR / failed / request
 
 ## Physical-device checklist
 
+*(Collection titles below are hypothetical scenario labels — not a required taxonomy or exact-name acceptance gate.)*
+
 | ID | Case | Expected |
 |----|------|----------|
-| A | Japan Trip exists → Tokyo hotel shot | **REUSE** Japan Trip |
-| B | Strong cluster, no existing context | **CREATE** meaningful Collection |
+| A | An existing personal-context Collection matches a new related shot | **REUSE** that Collection |
+| B | Strong cluster, no existing matching context | **CREATE** a meaningfully named Collection (open vocabulary) |
 | C | Ambiguous | **Needs Review** |
 | D | Image-only | Multimodal attempt → Collection or NR |
 | E | User-created Collection | **No** auto-add |
 | F | AI assign → user Move | Correction sticks; no bounce-back |
-| G | “Trip to Japan” proposal vs Japan Trip | Reuse canonical; no duplicate |
+| G | Semantically equivalent proposal vs existing title | **REUSE** existing profile; no near-duplicate Collection |
 | H | Kill mid-backlog | Safe resume |
 | I | Offline | Manual works; pendingNetwork / retry |
 | J | New shot incremental | sync→OCR→resolver→Collection |
@@ -252,7 +280,7 @@ DEBUG metrics if practical: processed / reused / created / NR / failed / request
 
 ## Success metrics
 
-correct reuse · correct create · duplicate rate · incorrect filing · NR rate · correction rate · latency · failure rate  
+correct reuse · correct create · duplicate rate · incorrect filing · NR rate · correction rate · latency · failure rate · **naming usefulness** (not exact-string match to doc examples)
 
 **Trust > coverage.**
 

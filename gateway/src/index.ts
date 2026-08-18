@@ -1,9 +1,10 @@
 import express from "express";
 import { createSimpleRateLimiter, requireGatewayAuth } from "./auth.js";
 import { loadConfig } from "./config.js";
-import { healthHandler, understandBatchHandler, understandHandler } from "./handlers.js";
+import { healthHandler, understandBatchHandler, understandHandler, contentUnderstandHandler } from "./handlers.js";
 import { logError, logInfo } from "./logger.js";
 import { createOpenAIClient } from "./openaiClient.js";
+import { CONTENT_SCHEMA_VERSION } from "./contentPrompt.js";
 
 const config = loadConfig();
 const app = express();
@@ -33,6 +34,12 @@ app.post(
   gatewayAuth,
   understandBatchHandler(config, client)
 );
+app.post(
+  "/v1/content-understand",
+  rateLimit,
+  gatewayAuth,
+  contentUnderstandHandler(config, client)
+);
 
 app.use((_req, res) => {
   res.status(404).json({ error: { code: "NOT_FOUND", message: "Not found" } });
@@ -44,6 +51,7 @@ app.listen(config.port, config.host, () => {
     port: config.port,
     model: config.openaiModel,
     schemaVersion: config.schemaVersion,
+    contentSchemaVersion: CONTENT_SCHEMA_VERSION,
     modelConfigured: Boolean(config.openaiApiKey),
     gatewayAuthRequired: Boolean(config.gatewaySharedSecret),
   });

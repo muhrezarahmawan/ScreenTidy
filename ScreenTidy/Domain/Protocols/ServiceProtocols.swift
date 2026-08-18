@@ -126,7 +126,8 @@ protocol ThumbnailProviding: Sendable {
         targetSize: CGSize,
         contentMode: ThumbnailContentMode,
         allowsNetworkAccess: Bool,
-        progressHandler: (@Sendable (Double) -> Void)?
+        progressHandler: (@Sendable (Double) -> Void)?,
+        requestID: UUID
     ) async -> ThumbnailResult?
     func cancelRequest(_ requestID: UUID)
 }
@@ -136,14 +137,16 @@ extension ThumbnailProviding {
         localIdentifier: String,
         targetSize: CGSize,
         contentMode: ThumbnailContentMode,
-        allowsNetworkAccess: Bool
+        allowsNetworkAccess: Bool,
+        progressHandler: (@Sendable (Double) -> Void)? = nil
     ) async -> ThumbnailResult? {
         await requestThumbnail(
             localIdentifier: localIdentifier,
             targetSize: targetSize,
             contentMode: contentMode,
             allowsNetworkAccess: allowsNetworkAccess,
-            progressHandler: nil
+            progressHandler: progressHandler,
+            requestID: UUID()
         )
     }
 }
