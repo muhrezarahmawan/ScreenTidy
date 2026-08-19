@@ -9,7 +9,9 @@
     "dev": "tsx watch src/index.ts",
     "build": "tsc -p tsconfig.json",
     "start": "node dist/index.js",
-    "typecheck": "tsc -p tsconfig.json --noEmit"
+    "typecheck": "tsc -p tsconfig.json --noEmit",
+    "test:upstream": "node --import tsx scripts/test-upstream-error.mjs",
+    "smoke": "node scripts/smoke-understand.mjs"
   },
   "engines": {
     "node": ">=20"

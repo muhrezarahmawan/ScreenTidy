@@ -54,7 +54,7 @@ export function loadConfig(): AppConfig {
     // Railway injects PORT; default 8787 for local.
     port: intEnv("PORT", 8787),
     openaiApiKey: process.env.OPENAI_API_KEY?.trim() || undefined,
-    openaiModel: strEnv("OPENAI_MODEL", "gpt-5.6"),
+    openaiModel: strEnv("OPENAI_MODEL", "gpt-5.6-terra"),
     requestTimeoutMs: intEnv("REQUEST_TIMEOUT_MS", 60_000),
     maxBatchSize: intEnv("MAX_BATCH_SIZE", 8),
     imageLongEdgeMax: intEnv("IMAGE_LONG_EDGE_MAX", 1024),

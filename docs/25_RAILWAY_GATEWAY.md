@@ -35,7 +35,7 @@ Folder: `gateway/` (existing Express/TypeScript service).
 |----------|----------|--------|
 | `OPENAI_API_KEY` | **Yes** | Never commit; never ship to iOS |
 | `GATEWAY_SHARED_SECRET` | **Yes on Railway** | MVP/TestFlight bearer token — **not** the OpenAI key |
-| `OPENAI_MODEL` | No | Default `gpt-5.6` |
+| `OPENAI_MODEL` | No | Default `gpt-5.6-terra` (product Terra); `gpt-5.6` aliases Sol |
 | `PORT` | Auto | Railway injects |
 | `HOST` | No | Default `0.0.0.0` |
 | `REQUEST_TIMEOUT_MS` | No | Default `60000` |

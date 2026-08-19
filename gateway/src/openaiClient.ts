@@ -1,4 +1,4 @@
-import OpenAI from "openai";
+import OpenAI, { APIError } from "openai";
 import type { AppConfig } from "./config.js";
 import { PROMPT_VERSION, PROVIDER, requireApiKey } from "./config.js";
 import {
@@ -18,14 +18,21 @@ import {
   type ContentUnderstandingResponse,
   type UnderstandingResponse,
 } from "./schemas.js";
+import {
+  extractSanitizedUpstreamError,
+  sanitizeUpstreamMessage,
+  type SanitizedUpstreamError,
+} from "./upstreamError.js";
 
 export class GatewayError extends Error {
   status: number;
   code: string;
-  constructor(status: number, code: string, message: string) {
+  upstream?: SanitizedUpstreamError;
+  constructor(status: number, code: string, message: string, upstream?: SanitizedUpstreamError) {
     super(message);
     this.status = status;
     this.code = code;
+    this.upstream = upstream;
   }
 }
 
@@ -236,19 +243,19 @@ async function callResponses(args: {
   const timer = setTimeout(() => controller.abort(), args.timeoutMs);
 
   try {
+    // Prefer `instructions` for system policy; user turn carries OCR/image evidence.
+    // max_output_tokens keeps GPT-5.x reasoning models from returning empty visible text.
     const response = await args.client.responses.create(
       {
         model: args.model,
+        instructions: args.systemPrompt,
         input: [
-          {
-            role: "system",
-            content: [{ type: "input_text", text: args.systemPrompt }],
-          },
           {
             role: "user",
             content: args.content,
           },
         ],
+        max_output_tokens: 4096,
         text: {
           format: {
             type: "json_schema",
@@ -278,14 +285,60 @@ async function callResponses(args: {
     if (isAbortError(err)) {
       throw new GatewayError(504, "UPSTREAM_TIMEOUT", "OpenAI request timed out");
     }
-    const status = (err as { status?: number })?.status;
-    if (typeof status === "number" && status >= 400 && status < 500) {
-      throw new GatewayError(502, "UPSTREAM_CLIENT_ERROR", "OpenAI rejected the request");
-    }
-    throw new GatewayError(502, "UPSTREAM_ERROR", "OpenAI request failed");
+    throw mapOpenAIFailure(err);
   } finally {
     clearTimeout(timer);
   }
+}
+
+export function mapOpenAIFailure(err: unknown): GatewayError {
+  const upstream = extractSanitizedUpstreamError(err);
+  const status = upstream?.httpStatus;
+
+  if (status === 401) {
+    return new GatewayError(
+      502,
+      "UPSTREAM_AUTH",
+      "OpenAI authentication failed — check OPENAI_API_KEY on Railway",
+      upstream
+    );
+  }
+  if (status === 403) {
+    return new GatewayError(
+      502,
+      "UPSTREAM_PERMISSION",
+      "OpenAI denied access to this model or project",
+      upstream
+    );
+  }
+  if (status === 404) {
+    return new GatewayError(
+      502,
+      "UPSTREAM_MODEL_NOT_FOUND",
+      "OpenAI model not found — check OPENAI_MODEL",
+      upstream
+    );
+  }
+  if (status === 429) {
+    return new GatewayError(502, "UPSTREAM_RATE_LIMIT", "OpenAI rate limit exceeded", upstream);
+  }
+  if (typeof status === "number" && status >= 400 && status < 500) {
+    return new GatewayError(
+      502,
+      "UPSTREAM_CLIENT_ERROR",
+      sanitizeUpstreamMessage(upstream?.message) ?? "OpenAI rejected the request",
+      upstream
+    );
+  }
+  if (err instanceof APIError) {
+    return new GatewayError(
+      502,
+      "UPSTREAM_ERROR",
+      sanitizeUpstreamMessage(err.message) ?? "OpenAI request failed",
+      upstream
+    );
+  }
+  return new GatewayError(502, "UPSTREAM_ERROR", "OpenAI request failed", upstream);
 }
 
 function isAbortError(err: unknown): boolean {

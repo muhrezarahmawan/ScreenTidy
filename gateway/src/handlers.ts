@@ -30,6 +30,7 @@ export function healthHandler(config: AppConfig) {
       schemaVersion: config.schemaVersion,
       contentSchemaVersion: CONTENT_SCHEMA_VERSION,
       modelConfigured: Boolean(config.openaiApiKey),
+      model: config.openaiModel,
     });
   };
 }
@@ -89,23 +90,25 @@ export function understandHandler(config: AppConfig, client: OpenAI | null) {
       const mapped = mapError(err);
       status = mapped.status;
       errorCode = mapped.code;
-      res.status(mapped.status).json({
-        error: {
-          code: mapped.code,
-          message: mapped.message,
-          correlationId,
-        },
-      });
-    } finally {
-      logRequest({
+      sendError(res, mapped, correlationId);
+      logMappedRequest({
         route: "/v1/understand",
         correlationId,
         status,
-        latencyMs: Date.now() - started,
+        started,
         model: config.openaiModel,
         errorCode,
+        upstream: mapped.upstream,
       });
+      return;
     }
+    logMappedRequest({
+      route: "/v1/understand",
+      correlationId,
+      status,
+      started,
+      model: config.openaiModel,
+    });
   };
 }
 
@@ -192,23 +195,25 @@ export function understandBatchHandler(config: AppConfig, client: OpenAI | null)
       const mapped = mapError(err);
       status = mapped.status;
       errorCode = mapped.code;
-      res.status(mapped.status).json({
-        error: {
-          code: mapped.code,
-          message: mapped.message,
-          correlationId,
-        },
-      });
-    } finally {
-      logRequest({
+      sendError(res, mapped, correlationId);
+      logMappedRequest({
         route: "/v1/understand-batch",
         correlationId,
         status,
-        latencyMs: Date.now() - started,
+        started,
         model: config.openaiModel,
         errorCode,
+        upstream: mapped.upstream,
       });
+      return;
     }
+    logMappedRequest({
+      route: "/v1/understand-batch",
+      correlationId,
+      status,
+      started,
+      model: config.openaiModel,
+    });
   };
 }
 
@@ -271,23 +276,25 @@ export function contentUnderstandHandler(config: AppConfig, client: OpenAI | nul
       const mapped = mapError(err);
       status = mapped.status;
       errorCode = mapped.code;
-      res.status(mapped.status).json({
-        error: {
-          code: mapped.code,
-          message: mapped.message,
-          correlationId,
-        },
-      });
-    } finally {
-      logRequest({
+      sendError(res, mapped, correlationId);
+      logMappedRequest({
         route: "/v1/content-understand",
         correlationId,
         status,
-        latencyMs: Date.now() - started,
+        started,
         model: config.openaiModel,
         errorCode,
+        upstream: mapped.upstream,
       });
+      return;
     }
+    logMappedRequest({
+      route: "/v1/content-understand",
+      correlationId,
+      status,
+      started,
+      model: config.openaiModel,
+    });
   };
 }
 
@@ -342,9 +349,63 @@ function prepareVisual(args: {
   }
 }
 
-function mapError(err: unknown): { status: number; code: string; message: string } {
+type MappedError = {
+  status: number;
+  code: string;
+  message: string;
+  upstream?: {
+    httpStatus?: number;
+    type?: string;
+    code?: string;
+    message?: string;
+    param?: string;
+    requestId?: string;
+  };
+};
+
+function mapError(err: unknown): MappedError {
   if (err instanceof GatewayError) {
-    return { status: err.status, code: err.code, message: err.message };
+    return {
+      status: err.status,
+      code: err.code,
+      message: err.message,
+      upstream: err.upstream,
+    };
   }
   return { status: 500, code: "INTERNAL_ERROR", message: "Unexpected server error" };
+}
+
+function sendError(res: Response, mapped: MappedError, correlationId: string): void {
+  res.status(mapped.status).json({
+    error: {
+      code: mapped.code,
+      message: mapped.message,
+      correlationId,
+      ...(mapped.upstream ? { upstream: mapped.upstream } : {}),
+    },
+  });
+}
+
+function logMappedRequest(args: {
+  route: string;
+  correlationId: string;
+  status: number;
+  started: number;
+  model: string;
+  errorCode?: string;
+  upstream?: MappedError["upstream"];
+}): void {
+  logRequest({
+    route: args.route,
+    correlationId: args.correlationId,
+    status: args.status,
+    latencyMs: Date.now() - args.started,
+    model: args.model,
+    errorCode: args.errorCode,
+    upstreamHttpStatus: args.upstream?.httpStatus,
+    upstreamType: args.upstream?.type,
+    upstreamCode: args.upstream?.code,
+    upstreamMessage: args.upstream?.message,
+    upstreamRequestId: args.upstream?.requestId,
+  });
 }

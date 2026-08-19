@@ -6,6 +6,11 @@ export function logRequest(fields: {
   model: string;
   route: string;
   errorCode?: string;
+  upstreamHttpStatus?: number;
+  upstreamType?: string;
+  upstreamCode?: string;
+  upstreamMessage?: string;
+  upstreamRequestId?: string;
 }): void {
   const line = {
     ts: new Date().toISOString(),
@@ -15,6 +20,13 @@ export function logRequest(fields: {
     latencyMs: fields.latencyMs,
     model: fields.model,
     ...(fields.errorCode ? { errorCode: fields.errorCode } : {}),
+    ...(fields.upstreamHttpStatus != null
+      ? { upstreamHttpStatus: fields.upstreamHttpStatus }
+      : {}),
+    ...(fields.upstreamType ? { upstreamType: fields.upstreamType } : {}),
+    ...(fields.upstreamCode ? { upstreamCode: fields.upstreamCode } : {}),
+    ...(fields.upstreamMessage ? { upstreamMessage: fields.upstreamMessage } : {}),
+    ...(fields.upstreamRequestId ? { upstreamRequestId: fields.upstreamRequestId } : {}),
   };
   console.log(JSON.stringify(line));
 }

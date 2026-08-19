@@ -29,7 +29,7 @@ Requires Node.js 20+.
 | `HOST` | `0.0.0.0` | Bind address |
 | `PORT` | `8787` | Listen port (Railway injects `PORT`) |
 | `OPENAI_API_KEY` | _(required for understand)_ | Never commit; never log; never ship to iOS |
-| `OPENAI_MODEL` | `gpt-5.6` | **GPT-5.6 Terra** initial product choice; replaceable |
+| `OPENAI_MODEL` | `gpt-5.6-terra` | **GPT-5.6 Terra** (product default); override with `gpt-5.6` / `gpt-5.6-sol` / `gpt-5.6-luna` if needed |
 | `GATEWAY_SHARED_SECRET` | _(empty locally)_ | Bearer token for `/v1/understand*` and `/v1/content-understand` — **not** the OpenAI key. **Required on Railway.** |
 | `REQUEST_TIMEOUT_MS` | `60000` | Upstream + local abort timeout |
 | `MAX_BATCH_SIZE` | `8` | Max members in `/v1/understand-batch` |
