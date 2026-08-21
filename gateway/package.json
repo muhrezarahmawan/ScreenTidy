@@ -11,6 +11,7 @@
     "start": "node dist/index.js",
     "typecheck": "tsc -p tsconfig.json --noEmit",
     "test:upstream": "node --import tsx scripts/test-upstream-error.mjs",
+    "test:group": "node --import tsx scripts/test-group-understand.mjs",
     "smoke": "node scripts/smoke-understand.mjs"
   },
   "engines": {

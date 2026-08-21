@@ -314,6 +314,113 @@ export type ContentUnderstandRequest = z.infer<typeof ContentUnderstandRequestSc
 export type ContentUnderstandingResponse = z.infer<typeof ContentUnderstandingResponseSchema>;
 export type ContentUnderstandingContent = z.infer<typeof ContentUnderstandingContentSchema>;
 
+// --- Sprint 8.3B group Lab (DEBUG) — no Collection fields ---
+
+export const GroupMemberEvidenceSchema = z
+  .object({
+    localId: nonEmptyString,
+    ocrText: z.string().optional(),
+    visionLabels: z.array(z.string().max(80)).max(20).optional(),
+    facets: z.array(z.string().max(80)).max(20).optional(),
+    platform: z.string().max(80).optional(),
+    contentType: z.string().max(80).optional(),
+    contentFamily: z.string().max(80).optional(),
+    surface: z.string().max(80).optional(),
+    embeddedHints: z.array(z.string().max(120)).max(12).optional(),
+    openDescriptors: z.array(z.string().max(80)).max(12).optional(),
+    evidenceNotes: z.array(z.string().max(200)).max(8).optional(),
+    createdAt: z.string().optional(),
+  })
+  .strict();
+
+export const GroupUnderstandRequestSchema = z
+  .object({
+    correlationId: nonEmptyString,
+    schemaVersion: z.string().optional(),
+    members: z.array(GroupMemberEvidenceSchema).min(2).max(8),
+  })
+  .strict()
+  .superRefine((body, ctx) => {
+    const ids = body.members.map((m) => m.localId);
+    if (new Set(ids).size !== ids.length) {
+      ctx.addIssue({
+        code: z.ZodIssueCode.custom,
+        message: "Duplicate member localId values",
+        path: ["members"],
+      });
+    }
+    // Reject accidental image / Collection fields on the request object.
+    // `.strict()` already rejects unknown keys on members/root.
+  });
+
+export const GroupMemberAssessmentSchema = z.object({
+  localId: nonEmptyString,
+  role: z.enum(["core", "supporting", "outlier", "uncertain"]),
+  notes: z.array(z.string().max(200)).max(8).default([]),
+});
+
+export const GroupUnderstandingContentSchema = z.object({
+  belongsTogether: z.enum(["yes", "no", "uncertain"]),
+  confidence,
+  sharedContextSummary: z.string().max(400).nullable(),
+  supportingEvidence: z.array(z.string().max(120)).max(12),
+  conflictingEvidence: z.array(z.string().max(120)).max(12),
+  memberAssessments: z.array(GroupMemberAssessmentSchema).min(1).max(8),
+  outlierLocalIds: z.array(nonEmptyString).max(8),
+  insufficientEvidence: z.boolean(),
+  outerInnerNotes: z.array(z.string().max(200)).max(8),
+});
+
+export const GroupUnderstandingResponseSchema = GroupUnderstandingContentSchema.extend({
+  provider: nonEmptyString,
+  promptVersion: nonEmptyString,
+  schemaVersion: nonEmptyString,
+});
+
+export type GroupUnderstandRequest = z.infer<typeof GroupUnderstandRequestSchema>;
+export type GroupUnderstandingContent = z.infer<typeof GroupUnderstandingContentSchema>;
+export type GroupUnderstandingResponse = z.infer<typeof GroupUnderstandingResponseSchema>;
+export type GroupMemberEvidence = z.infer<typeof GroupMemberEvidenceSchema>;
+
+export const OPENAI_GROUP_JSON_SCHEMA = {
+  type: "object",
+  additionalProperties: false,
+  required: [
+    "belongsTogether",
+    "confidence",
+    "sharedContextSummary",
+    "supportingEvidence",
+    "conflictingEvidence",
+    "memberAssessments",
+    "outlierLocalIds",
+    "insufficientEvidence",
+    "outerInnerNotes",
+  ],
+  properties: {
+    belongsTogether: { type: "string", enum: ["yes", "no", "uncertain"] },
+    confidence: { type: "number" },
+    sharedContextSummary: { anyOf: [{ type: "string" }, { type: "null" }] },
+    supportingEvidence: { type: "array", items: { type: "string" } },
+    conflictingEvidence: { type: "array", items: { type: "string" } },
+    memberAssessments: {
+      type: "array",
+      items: {
+        type: "object",
+        additionalProperties: false,
+        required: ["localId", "role", "notes"],
+        properties: {
+          localId: { type: "string" },
+          role: { type: "string", enum: ["core", "supporting", "outlier", "uncertain"] },
+          notes: { type: "array", items: { type: "string" } },
+        },
+      },
+    },
+    outlierLocalIds: { type: "array", items: { type: "string" } },
+    insufficientEvidence: { type: "boolean" },
+    outerInnerNotes: { type: "array", items: { type: "string" } },
+  },
+} as const;
+
 const labeledIdConfidenceOpenAI = {
   type: "object",
   additionalProperties: false,

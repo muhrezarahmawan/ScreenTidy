@@ -30,7 +30,7 @@ Requires Node.js 20+.
 | `PORT` | `8787` | Listen port (Railway injects `PORT`) |
 | `OPENAI_API_KEY` | _(required for understand)_ | Never commit; never log; never ship to iOS |
 | `OPENAI_MODEL` | `gpt-5.6-terra` | **GPT-5.6 Terra** (product default); override with `gpt-5.6` / `gpt-5.6-sol` / `gpt-5.6-luna` if needed |
-| `GATEWAY_SHARED_SECRET` | _(empty locally)_ | Bearer token for `/v1/understand*` and `/v1/content-understand` — **not** the OpenAI key. **Required on Railway.** |
+| `GATEWAY_SHARED_SECRET` | _(empty locally)_ | Bearer token for `/v1/understand*`, `/v1/content-understand`, `/v1/group-understand` — **not** the OpenAI key. **Required on Railway.** |
 | `REQUEST_TIMEOUT_MS` | `60000` | Upstream + local abort timeout |
 | `MAX_BATCH_SIZE` | `8` | Max members in `/v1/understand-batch` |
 | `IMAGE_LONG_EDGE_MAX` | `1024` | Reject oversized client images |
@@ -55,7 +55,7 @@ Authorization: Bearer <GATEWAY_SHARED_SECRET>
 ### `GET /health`
 
 ```json
-{ "ok": true, "schemaVersion": "screentidy-understanding-v2", "contentSchemaVersion": "8.3a-content-v1", "modelConfigured": true }
+{ "ok": true, "schemaVersion": "screentidy-understanding-v2", "contentSchemaVersion": "8.3a-content-v1", "groupSchemaVersion": "8.3b-group-v1", "modelConfigured": true }
 ```
 
 `modelConfigured` is a boolean only — the API key is never revealed.
@@ -71,6 +71,10 @@ Up to `MAX_BATCH_SIZE` members (auth required when secret configured).
 ### `POST /v1/content-understand` (Sprint 8.3A DEBUG Lab)
 
 Single-screenshot **content** understanding only. Requires image. **No** eligible Collections / Collection names. Schema `8.3a-content-v1`. Used by Visual Eval Multimodal Lab — not production organize.
+
+### `POST /v1/group-understand` (Sprint 8.3B DEBUG Lab)
+
+Contextual **group** reasoning over 2–8 structured evidence packs. **No images** (evidence-only). **No** eligible Collections / Collection names / proposedNewCollection. Schema `8.3b-group-v1`. Returns `belongsTogether` / evidence / outliers — not Collection mutation. Used by Group Lab client only — not production organize.
 
 ## curl examples
 

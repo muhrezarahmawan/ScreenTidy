@@ -2,6 +2,7 @@ import type { Request, Response } from "express";
 import type OpenAI from "openai";
 import type { AppConfig } from "./config.js";
 import { CONTENT_SCHEMA_VERSION, buildContentUserPrompt } from "./contentPrompt.js";
+import { GROUP_SCHEMA_VERSION, buildGroupUserPrompt } from "./groupPrompt.js";
 import {
   assertImageWithinBounds,
   decodeBase64Image,
@@ -13,12 +14,14 @@ import { logRequest } from "./logger.js";
 import {
   GatewayError,
   contentUnderstandSingle,
+  groupUnderstand,
   understandBatch,
   understandSingle,
 } from "./openaiClient.js";
 import { buildBatchUserPrompt, buildSingleUserPrompt } from "./prompt.js";
 import {
   ContentUnderstandRequestSchema,
+  GroupUnderstandRequestSchema,
   UnderstandBatchRequestSchema,
   UnderstandRequestSchema,
 } from "./schemas.js";
@@ -29,6 +32,7 @@ export function healthHandler(config: AppConfig) {
       ok: true,
       schemaVersion: config.schemaVersion,
       contentSchemaVersion: CONTENT_SCHEMA_VERSION,
+      groupSchemaVersion: GROUP_SCHEMA_VERSION,
       modelConfigured: Boolean(config.openaiApiKey),
       model: config.openaiModel,
     });
@@ -290,6 +294,112 @@ export function contentUnderstandHandler(config: AppConfig, client: OpenAI | nul
     }
     logMappedRequest({
       route: "/v1/content-understand",
+      correlationId,
+      status,
+      started,
+      model: config.openaiModel,
+    });
+  };
+}
+
+/** Sprint 8.3B Lab — contextual group reasoning. Evidence-only; no images; no Collections. */
+export function groupUnderstandHandler(config: AppConfig, client: OpenAI | null) {
+  return async (req: Request, res: Response): Promise<void> => {
+    const started = Date.now();
+    let correlationId = "unknown";
+    let status = 500;
+    let errorCode: string | undefined;
+
+    try {
+      correlationId = peekCorrelationId(req.body);
+
+      // Explicit rejection when caller accidentally sends Collection / image fields
+      // before Zod (clearer error than generic REQUEST_INVALID).
+      if (req.body && typeof req.body === "object" && !Array.isArray(req.body)) {
+        const root = req.body as Record<string, unknown>;
+        const forbiddenRoot = [
+          "proposedNewCollection",
+          "eligibleCollections",
+          "candidateCollections",
+          "collectionTitle",
+          "collectionName",
+          "imageBase64",
+        ].filter((k) => Object.prototype.hasOwnProperty.call(root, k));
+        if (forbiddenRoot.length > 0) {
+          throw new GatewayError(
+            400,
+            "REQUEST_INVALID",
+            `group-understand does not accept: ${forbiddenRoot.join(", ")}`
+          );
+        }
+      }
+
+      const parsed = GroupUnderstandRequestSchema.safeParse(req.body);
+      if (!parsed.success) {
+        const msg = parsed.error.issues[0]?.message ?? "Invalid group-understand request body";
+        const tooLarge =
+          Array.isArray((req.body as { members?: unknown })?.members) &&
+          ((req.body as { members: unknown[] }).members?.length ?? 0) > config.maxBatchSize;
+        throw new GatewayError(
+          400,
+          tooLarge || msg.toLowerCase().includes("too_big") ? "BATCH_TOO_LARGE" : "REQUEST_INVALID",
+          tooLarge
+            ? `Batch exceeds MAX_BATCH_SIZE (${config.maxBatchSize})`
+            : msg.includes("Duplicate")
+              ? "Duplicate member localId values"
+              : "Invalid group-understand request body"
+        );
+      }
+      const body = parsed.data;
+      correlationId = body.correlationId;
+      ensureClient(client, config);
+
+      if (body.schemaVersion && body.schemaVersion !== GROUP_SCHEMA_VERSION) {
+        throw new GatewayError(
+          422,
+          "SCHEMA_VERSION_MISMATCH",
+          `Expected schemaVersion ${GROUP_SCHEMA_VERSION}`
+        );
+      }
+
+      if (body.members.length > config.maxBatchSize) {
+        throw new GatewayError(
+          422,
+          "BATCH_TOO_LARGE",
+          `Batch exceeds MAX_BATCH_SIZE (${config.maxBatchSize})`
+        );
+      }
+
+      const localIds = body.members.map((m) => m.localId);
+      const userText = buildGroupUserPrompt({ members: body.members });
+
+      const result = await groupUnderstand({
+        client: client!,
+        config,
+        userText,
+        expectedLocalIds: localIds,
+      });
+
+      status = 200;
+      res.json(result);
+    } catch (err) {
+      const mapped = mapError(err);
+      status = mapped.status;
+      errorCode = mapped.code;
+      sendError(res, mapped, correlationId);
+      logMappedRequest({
+        route: "/v1/group-understand",
+        correlationId,
+        status,
+        started,
+        model: config.openaiModel,
+        errorCode,
+        upstream: mapped.upstream,
+      });
+      return;
+    }
+    logMappedRequest({
+      route: "/v1/group-understand",
       correlationId,
       status,
       started,

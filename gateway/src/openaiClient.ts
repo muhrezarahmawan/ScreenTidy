@@ -6,16 +6,23 @@ import {
   CONTENT_SCHEMA_VERSION,
   CONTENT_SYSTEM_PROMPT,
 } from "./contentPrompt.js";
+import {
+  GROUP_PROMPT_VERSION,
+  GROUP_SYSTEM_PROMPT,
+} from "./groupPrompt.js";
+import { finalizeGroupUnderstanding } from "./groupValidation.js";
 import { SYSTEM_PROMPT } from "./prompt.js";
 import {
   BatchUnderstandingContentSchema,
   ContentUnderstandingContentSchema,
   OPENAI_BATCH_JSON_SCHEMA,
   OPENAI_CONTENT_JSON_SCHEMA,
+  OPENAI_GROUP_JSON_SCHEMA,
   OPENAI_SINGLE_JSON_SCHEMA,
   UnderstandingContentSchema,
   type BatchUnderstandingResponse,
   type ContentUnderstandingResponse,
+  type GroupUnderstandingResponse,
   type UnderstandingResponse,
 } from "./schemas.js";
 import {
@@ -132,6 +139,37 @@ export async function contentUnderstandSingle(args: {
     promptVersion: CONTENT_PROMPT_VERSION,
     schemaVersion: CONTENT_SCHEMA_VERSION,
   };
+}
+
+/** Sprint 8.3B Lab — evidence-only group reasoning. No images. No Collection fields. */
+export async function groupUnderstand(args: {
+  client: OpenAI;
+  config: AppConfig;
+  userText: string;
+  expectedLocalIds: string[];
+}): Promise<GroupUnderstandingResponse> {
+  const content: ContentPart[] = [{ type: "input_text", text: args.userText }];
+
+  const raw = await callResponses({
+    client: args.client,
+    model: args.config.openaiModel,
+    timeoutMs: args.config.requestTimeoutMs,
+    systemPrompt: GROUP_SYSTEM_PROMPT,
+    schemaName: "screentidy_group_understanding_8_3b",
+    schema: OPENAI_GROUP_JSON_SCHEMA,
+    content,
+  });
+
+  const finalized = finalizeGroupUnderstanding({
+    raw,
+    expectedLocalIds: args.expectedLocalIds,
+    provider: PROVIDER,
+    promptVersion: GROUP_PROMPT_VERSION,
+  });
+  if (!finalized.ok) {
+    throw new GatewayError(422, finalized.error.code, finalized.error.message);
+  }
+  return finalized.value;
 }
 
 export async function understandBatch(args: {
