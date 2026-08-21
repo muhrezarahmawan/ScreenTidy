@@ -12,6 +12,7 @@
     "typecheck": "tsc -p tsconfig.json --noEmit",
     "test:upstream": "node --import tsx scripts/test-upstream-error.mjs",
     "test:group": "node --import tsx scripts/test-group-understand.mjs",
+    "test:naming-prompt": "node --import tsx scripts/test-naming-prompt.mjs",
     "smoke": "node scripts/smoke-understand.mjs"
   },
   "engines": {

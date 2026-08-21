@@ -16,7 +16,7 @@ function strEnv(name: string, fallback: string): string {
   return raw;
 }
 
-export const PROMPT_VERSION = "screentidy-org-v2";
+export const PROMPT_VERSION = "screentidy-org-v3";
 export const PROVIDER = "openai";
 
 export type AppConfig = {
